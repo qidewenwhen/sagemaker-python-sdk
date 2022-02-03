@@ -36,14 +36,15 @@ class FailStep(Step):
         """Constructs a FailStep.
 
         Args:
-            name (str): The name of the Fail step. A name is required and must be unique within an account.
+            name (str): The name of the fail step. A name is required and must be unique within an account.
             error_message (str or PipelineNonPrimitiveInputTypes): Error message defined by user.
-                Once the Fail step is reached, the execution will fail and the
+                Once the fail step is reached, the execution will fail and the
                 error message will be set as the failure reason (default: None).
-            display_name (str): The display name of the Fail step (default: None).
-            description (str): The description of the Fail step (default: None).
+            display_name (str): The display name of the fail step. The display name provides better readability for fail 
+            step naming conventions that are auto-generated with random numbers or timestamps. (default: None).
+            description (str): The description of the fail step (default: None).
             depends_on (List[str] or List[Step]): A list of step names or step instances
-                this `sagemaker.workflow.steps.FailStep` depends on (default: None).
+                that this fail step depends on (default: None).
         """
         super(FailStep, self).__init__(
             name, display_name, description, StepTypeEnum.FAIL, depends_on

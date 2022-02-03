@@ -61,6 +61,7 @@ class StepTypeEnum(Enum, metaclass=DefaultEnumMeta):
     QUALITY_CHECK = "QualityCheck"
     CLARIFY_CHECK = "ClarifyCheck"
     EMR = "EMR"
+    FAIL = "Fail"
 
 
 @attr.s

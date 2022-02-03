@@ -149,3 +149,5 @@ Steps
 .. autoclass:: sagemaker.workflow.clarify_check_step.ClarifyCheckConfig
 
 .. autoclass:: sagemaker.workflow.clarify_check_step.ClarifyCheckStep
+
+.. autoclass:: sagemaker.workflow.fail_step.FailStep

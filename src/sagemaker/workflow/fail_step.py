@@ -37,7 +37,7 @@ class FailStep(Step):
 
         Args:
             name (str): The name of the fail step. A name is required and must be unique within an account.
-            error_message (str or PipelineNonPrimitiveInputTypes): Error message defined by user.
+            error_message (str or PipelineNonPrimitiveInputTypes): An error message defined by the user.
                 Once the fail step is reached, the execution will fail and the
                 error message will be set as the failure reason (default: None).
             display_name (str): The display name of the fail step. The display name provides better readability for fail 

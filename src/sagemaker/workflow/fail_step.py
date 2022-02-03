@@ -40,8 +40,8 @@ class FailStep(Step):
             error_message (str or PipelineNonPrimitiveInputTypes): An error message defined by the user.
                 Once the fail step is reached, the execution will fail and the
                 error message will be set as the failure reason (default: None).
-            display_name (str): The display name of the fail step. The display name provides better readability for fail 
-            step naming conventions that are auto-generated with random numbers or timestamps. (default: None).
+            display_name (str): The display name of the fail step. The display name provides better readability 
+                for fail step naming conventions that are auto-generated with random numbers or timestamps. (default: None).
             description (str): The description of the fail step (default: None).
             depends_on (List[str] or List[Step]): A list of step names or step instances
                 that this fail step depends on (default: None).

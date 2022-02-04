@@ -529,7 +529,7 @@ class ProcessingStep(ConfigurableRetryStep):
         self.job_name = None
         self.kms_key = kms_key
 
-        # Examine why run method in `sagemaker.processing.Processor`` mutates the processor instance
+        # Examine why run method in `sagemaker.processing.Processor` mutates the processor instance
         # by setting the instance's arguments attribute. Refactor `Processor.run`, if possible.
         self.processor.arguments = job_arguments
 
@@ -541,11 +541,11 @@ class ProcessingStep(ConfigurableRetryStep):
         if code:
             code_url = urlparse(code)
             if code_url.scheme == "" or code_url.scheme == "file":
-                # By default, `Processor`` will upload the local code to an S3 path
+                # By default, `Processor` will upload the local code to an S3 path
                 # containing a timestamp. This causes cache misses whenever a
                 # pipeline is updated, even if the underlying script hasn't changed.
                 # To avoid this, hash the contents of the script and include it
-                # in the `job_name`` passed to the `Processor``, which will be used
+                # in the `job_name` passed to the `Processor`, which will be used
                 # instead of the timestamped path.
                 self.job_name = self._generate_code_upload_path()
 
@@ -622,7 +622,7 @@ class TuningStep(ConfigurableRetryStep):
             display_name (str): The display name of the `TuningStep`.
             description (str): The description of the `TuningStep`.
             inputs: Information about the training data. Please refer to the
-                ``fit()`` method of the associated estimator, as this can take
+                `fit()` method of the associated estimator, as this can take
                 any of the following forms:
 
                 * (str) - The S3 location where training data is saved.

@@ -33,13 +33,13 @@ class FailStep(Step):
         description: str = None,
         depends_on: Union[List[str], List[Step]] = None,
     ):
-        """Constructs a FailStep.
+        """Constructs a `FailStep`.
 
         Args:
             name (str): The name of the `FailStep`. A name is required and must be unique within a pipeline.
             error_message (str or PipelineNonPrimitiveInputTypes): An error message defined by the user.
-                Once the `FailStep` is reached, the execution will fail and the
-                error message will be set as the failure reason (default: None).
+                Once the `FailStep` is reached, the execution fails and the
+                error message is set as the failure reason (default: None).
             display_name (str): The display name of the `FailStep`. The display name provides better UI readability. (default: None).
             description (str): The description of the `FailStep` (default: None).
             depends_on (List[str] or List[Step]): A list of `Step` names or `Step` instances that this `FailStep` depends on. 

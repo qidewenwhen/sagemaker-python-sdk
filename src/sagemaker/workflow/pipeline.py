@@ -175,6 +175,41 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
         """
         return self.sagemaker_session.sagemaker_client.describe_pipeline(PipelineName=self.name)
 
+    def display(self):
+        """Prints out a Graphviz DAG Visual for the Pipeline
+
+        Returns:
+            A `_PipelineExecution` instance, if successful.
+        """
+
+        try:
+            import graphviz
+        except ImportError:
+            raise ImportError(
+                "Please import graphviz package to use this method. Call 'pip install graphviz' and "
+                "rerun command"
+            )
+
+        pipelineGraph = PipelineGraph.from_pipeline(self)
+        adjacencyList = pipelineGraph.build_adjacency_list_with_condition_edges()
+
+        G = graphviz.Digraph(self.name, strict=True)
+
+        for step in adjacencyList:
+            parent = step["StepName"]
+            G.node(parent)
+            for child in step["OutBoundEdges"]:
+                child_name = child["nextStepName"]
+                edge = child["edgeLabel"]
+                G.edge(parent, child_name, label=edge)
+
+        return G
+
+    def load(pipeline_arn: str):
+        pipelineEntity = Pipeline.sagemaker_session.sagemaker_client.describe_pipeline(pipeline_arn)
+        pipelineDefinition = pipelineEntity["PipelineDefinition"]
+        return Pipeline(pipelineEntity["PipelineName"], pipelineDefinition["Parameters"], [])
+
     def update(
         self,
         role_arn: str,
@@ -621,6 +656,45 @@ class PipelineGraph:
                 if is_cyclic_helper(step):
                     return True
         return False
+
+    def build_adjacency_list_with_condition_edges(self) -> List[Dict[str, any]]:
+        adjacency_list = []
+        old_adjacency_list = self.adjacency_list
+
+        ifSteps = []
+        elseSteps = []
+
+        for step in self.step_map.values():
+            if isinstance(step, ConditionStep):
+                for child_step in step.if_steps:
+                    if isinstance(child_step, Step):
+                        ifSteps.append(child_step.name)
+                    elif isinstance(child_step, StepCollection):
+                        ifSteps.append(self.step_map[child_step.name].steps[0].name)
+                for child_step in step.else_steps:
+                    if isinstance(child_step, Step):
+                        elseSteps.append(child_step.name)
+                    elif isinstance(child_step, StepCollection):
+                        elseSteps.append(self.step_map[child_step.name].steps[0].name)
+
+        for step in old_adjacency_list:
+            adjacency_list_step = {}
+
+            out_bound_edges = []
+            for child_step in old_adjacency_list[step]:
+                out_bound_edge = {"nextStepName": child_step}
+                if child_step in ifSteps:
+                    out_bound_edge["edgeLabel"] = "True"
+                elif child_step in elseSteps:
+                    out_bound_edge["edgeLabel"] = "False"
+                else:
+                    out_bound_edge["edgeLabel"] = None
+                out_bound_edges.append(out_bound_edge)
+
+            adjacency_list_step["StepName"] = step
+            adjacency_list_step["OutBoundEdges"] = out_bound_edges
+            adjacency_list.append(adjacency_list_step)
+        return adjacency_list
 
     def __iter__(self):
         """Perform topological sort traversal of the Pipeline Graph."""

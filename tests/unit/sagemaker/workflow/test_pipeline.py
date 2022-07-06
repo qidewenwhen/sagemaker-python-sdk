@@ -15,11 +15,12 @@ from __future__ import absolute_import
 
 import json
 
-import pytest
+import graphviz
 
 from mock import Mock
 
 from sagemaker import s3
+from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.execution_variables import ExecutionVariables
 from sagemaker.workflow.parameters import ParameterString
 from sagemaker.workflow.pipeline import Pipeline, PipelineGraph
@@ -214,6 +215,82 @@ def test_pipeline_describe(sagemaker_session_mock):
     assert sagemaker_session_mock.sagemaker_client.describe_pipeline.called_with(
         PipelineName="MyPipeline",
     )
+
+
+def test_pipeline_display(sagemaker_session_mock):
+    step1 = CustomStep(
+        name="MyStep1",
+        input_data=[
+            [],  # parameter reference
+            ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
+            PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
+        ],
+    )
+    step2 = CustomStep(
+        name="MyStep2", input_data=[step1.properties.ModelArtifacts.S3ModelArtifacts]
+    )  # step property
+
+    step3 = CustomStep(
+        name="MyStep3", input_data=[step2.properties.ModelArtifacts.S3ModelArtifacts]
+    )
+
+    pipeline = Pipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[step1, step2, step3],
+        sagemaker_session=sagemaker_session_mock,
+    )
+    output = pipeline.display()
+
+    expected = graphviz.Digraph("MyPipeline", strict=True)
+    expected.node("MyStep1")
+    expected.node("MyStep2")
+    expected.node("MyStep3")
+    expected.edge("MyStep1", "MyStep2", label=None)
+    expected.edge("MyStep2", "MyStep3", label=None)
+
+    assert sorted(output.body) == sorted(expected.body)
+
+
+def test_pipeline_display_with_condition_steps(sagemaker_session_mock):
+    ifStep1 = CustomStep("IfStep1")
+    ifStep2 = CustomStep("IfStep2")
+    elseStep1 = CustomStep("ElseStep1")
+    elseStep2 = CustomStep("ElseStep2")
+    normalStep1 = CustomStep(
+        "NormalStep", input_data=[elseStep2.properties.ModelArtifacts.S3ModelArtifacts]
+    )
+
+    conditionStep = ConditionStep(
+        name="ConditionStep",
+        conditions=[],
+        if_steps=[ifStep1, ifStep2],
+        else_steps=[elseStep1, elseStep2],
+    )
+
+    pipeline = Pipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[conditionStep, normalStep1],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    output = pipeline.display()
+
+    expected = graphviz.Digraph("MyPipeline")
+    expected.node("IfStep1")
+    expected.node("IfStep2")
+    expected.node("ElseStep1")
+    expected.node("ElseStep2")
+    expected.node("NormalStep")
+    expected.node("ConditionStep")
+    expected.edge("ConditionStep", "IfStep1", label="True")
+    expected.edge("ConditionStep", "IfStep2", label="True")
+    expected.edge("ConditionStep", "ElseStep1", label="False")
+    expected.edge("ConditionStep", "ElseStep2", label="False")
+    expected.edge("ElseStep2", "NormalStep", label=None)
+
+    assert sorted(output.body) == sorted(expected.body)
 
 
 def test_pipeline_start(sagemaker_session_mock):

@@ -15,9 +15,8 @@ from __future__ import absolute_import
 
 import json
 
-import graphviz
-
 from mock import Mock
+import pytest
 
 from sagemaker import s3
 from sagemaker.workflow.condition_step import ConditionStep
@@ -217,7 +216,10 @@ def test_pipeline_describe(sagemaker_session_mock):
     )
 
 
-def test_pipeline_display(sagemaker_session_mock):
+def test_pipeline_build_adjacency_list_with_condition_edges_without_condition_steps(
+    sagemaker_session_mock,
+):
+
     step1 = CustomStep(
         name="MyStep1",
         input_data=[
@@ -240,19 +242,42 @@ def test_pipeline_display(sagemaker_session_mock):
         steps=[step1, step2, step3],
         sagemaker_session=sagemaker_session_mock,
     )
-    output = pipeline.display()
 
-    expected = graphviz.Digraph("MyPipeline", strict=True)
-    expected.node("MyStep1")
-    expected.node("MyStep2")
-    expected.node("MyStep3")
-    expected.edge("MyStep1", "MyStep2", label=None)
-    expected.edge("MyStep2", "MyStep3", label=None)
+    pipelineGraph = PipelineGraph.from_pipeline(pipeline)
+    output = pipelineGraph.build_adjacency_list_with_condition_edges()
 
-    assert sorted(output.body) == sorted(expected.body)
+    expected = [
+        {
+            "StepName": "MyStep1",
+            "OutBoundEdges": [{"nextStepName": "MyStep2", "edgeLabel": None}],
+        },
+        {
+            "StepName": "MyStep2",
+            "OutBoundEdges": [{"nextStepName": "MyStep3", "edgeLabel": None}],
+        },
+        {"StepName": "MyStep3", "OutBoundEdges": []},
+    ]
+
+    assert len(output) == len(expected)
+
+    sorted(output, key=lambda x: x["StepName"])
+    sorted(expected, key=lambda x: x["StepName"])
+
+    for i in range(len(output)):
+        assert output[i]["StepName"] == expected[i]["StepName"]
+        output_outBoundEdges = sorted(output[i]["OutBoundEdges"], key=lambda x: x["nextStepName"])
+        expected_outBoundEdges = sorted(
+            expected[i]["OutBoundEdges"], key=lambda x: x["nextStepName"]
+        )
+        assert len(output_outBoundEdges) == len(expected_outBoundEdges)
+        for j in range(len(output_outBoundEdges)):
+            assert output_outBoundEdges[j] == expected_outBoundEdges[j]
 
 
-def test_pipeline_display_with_condition_steps(sagemaker_session_mock):
+def test_pipeline_build_adjacency_list_with_condition_edges_with_condition_step(
+    sagemaker_session_mock,
+):
+
     ifStep1 = CustomStep("IfStep1")
     ifStep2 = CustomStep("IfStep2")
     elseStep1 = CustomStep("ElseStep1")
@@ -275,22 +300,43 @@ def test_pipeline_display_with_condition_steps(sagemaker_session_mock):
         sagemaker_session=sagemaker_session_mock,
     )
 
-    output = pipeline.display()
+    pipelineGraph = PipelineGraph.from_pipeline(pipeline)
+    output = pipelineGraph.build_adjacency_list_with_condition_edges()
 
-    expected = graphviz.Digraph("MyPipeline")
-    expected.node("IfStep1")
-    expected.node("IfStep2")
-    expected.node("ElseStep1")
-    expected.node("ElseStep2")
-    expected.node("NormalStep")
-    expected.node("ConditionStep")
-    expected.edge("ConditionStep", "IfStep1", label="True")
-    expected.edge("ConditionStep", "IfStep2", label="True")
-    expected.edge("ConditionStep", "ElseStep1", label="False")
-    expected.edge("ConditionStep", "ElseStep2", label="False")
-    expected.edge("ElseStep2", "NormalStep", label=None)
+    expected = [
+        {
+            "StepName": "ConditionStep",
+            "OutBoundEdges": [
+                {"nextStepName": "ElseStep2", "edgeLabel": "False"},
+                {"nextStepName": "ElseStep1", "edgeLabel": "False"},
+                {"nextStepName": "IfStep2", "edgeLabel": "True"},
+                {"nextStepName": "IfStep1", "edgeLabel": "True"},
+            ],
+        },
+        {
+            "StepName": "ElseStep2",
+            "OutBoundEdges": [{"nextStepName": "NormalStep", "edgeLabel": None}],
+        },
+        {"StepName": "IfStep1", "OutBoundEdges": []},
+        {"StepName": "IfStep2", "OutBoundEdges": []},
+        {"StepName": "ElseStep1", "OutBoundEdges": []},
+        {"StepName": "NormalStep", "OutBoundEdges": []},
+    ]
 
-    assert sorted(output.body) == sorted(expected.body)
+    assert len(output) == len(expected)
+
+    sorted(output, key=lambda x: x["StepName"])
+    sorted(expected, key=lambda x: x["StepName"])
+
+    for i in range(len(output)):
+        assert output[i]["StepName"] == expected[i]["StepName"]
+        output_outBoundEdges = sorted(output[i]["OutBoundEdges"], key=lambda x: x["nextStepName"])
+        expected_outBoundEdges = sorted(
+            expected[i]["OutBoundEdges"], key=lambda x: x["nextStepName"]
+        )
+        assert len(output_outBoundEdges) == len(expected_outBoundEdges)
+        for j in range(len(output_outBoundEdges)):
+            assert output_outBoundEdges[j] == expected_outBoundEdges[j]
 
 
 def test_pipeline_start(sagemaker_session_mock):

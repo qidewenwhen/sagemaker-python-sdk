@@ -43,6 +43,59 @@ from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.utilities import list_to_request
 
 
+def load(pipeline_arn: str):
+    """Loads a new Pipeline object with information from a pipeline in the Tioga backend.
+
+    The steps in the object will be left empty
+
+    Args:
+        pipeline_arn (str): pipeline arn for a specific pipeline in Tioga backend
+
+    Returns:
+        Pipeline object
+    """
+    pipelineEntity = Pipeline.sagemaker_session.sagemaker_client.describe_pipeline(pipeline_arn)
+    pipelineDefinition = pipelineEntity["PipelineDefinition"]
+    return Pipeline(pipelineEntity["PipelineName"], pipelineDefinition["Parameters"], [])
+
+
+def build_visual_dag(
+    pipeline_name: str, adjacency_list: List[Dict[str, any]], step_statuses: Dict[str, str]
+):
+    """Builds a Graphviz object that visualizes a pipeline/execution
+
+    Args:
+        pipeline_name (str): pipeline name for the visualized pipeline
+        adjacency_list (List[Dict[str, any]]): adjacency list for the visualized pipeline
+        step_statuses (Dict[str, str]): step statuses of the steps in an execution
+
+    Returns:
+        A Graphviz object
+    """
+    try:
+        import graphviz
+    except ImportError:
+        raise ImportError(
+            "Please import graphviz package to use this method. Call 'pip install graphviz' "
+            "and rerun command"
+        )
+
+    color = {"Succeeded": "green", "Failed": "red", "Executing": "blue", "Not Executed": "grey"}
+
+    G = graphviz.Digraph(pipeline_name, strict=True)
+
+    for step in adjacency_list:
+        parent = step["StepName"]
+        status = step_statuses[parent] if parent in step_statuses else "Not Executed"
+        G.node(parent, color=color[status], style="filled")
+        for child in step["OutBoundEdges"]:
+            child_name = child["nextStepName"]
+            edge = child["edgeLabel"]
+            G.edge(parent, child_name, label=edge)
+
+    return G
+
+
 @attr.s
 class Pipeline(Entity):
     """Pipeline for workflow.
@@ -176,39 +229,17 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
         return self.sagemaker_session.sagemaker_client.describe_pipeline(PipelineName=self.name)
 
     def display(self):
-        """Prints out a Graphviz DAG Visual for the Pipeline
+        """Prints out a Graphviz DAG visual for the Pipeline
 
         Returns:
-            A `_PipelineExecution` instance, if successful.
+            A Graphviz object representing the pipeline, if successful.
         """
-
-        try:
-            import graphviz
-        except ImportError:
-            raise ImportError(
-                "Please import graphviz package to use this method. Call 'pip install graphviz' and "
-                "rerun command"
-            )
 
         pipelineGraph = PipelineGraph.from_pipeline(self)
         adjacencyList = pipelineGraph.build_adjacency_list_with_condition_edges()
+        stepStatuses = {}
 
-        G = graphviz.Digraph(self.name, strict=True)
-
-        for step in adjacencyList:
-            parent = step["StepName"]
-            G.node(parent)
-            for child in step["OutBoundEdges"]:
-                child_name = child["nextStepName"]
-                edge = child["edgeLabel"]
-                G.edge(parent, child_name, label=edge)
-
-        return G
-
-    def load(pipeline_arn: str):
-        pipelineEntity = Pipeline.sagemaker_session.sagemaker_client.describe_pipeline(pipeline_arn)
-        pipelineDefinition = pipelineEntity["PipelineDefinition"]
-        return Pipeline(pipelineEntity["PipelineName"], pipelineDefinition["Parameters"], [])
+        return build_visual_dag(self.name, adjacencyList, stepStatuses)
 
     def update(
         self,
@@ -321,6 +352,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
         return _PipelineExecution(
             arn=response["PipelineExecutionArn"],
             sagemaker_session=self.sagemaker_session,
+            pipeline=self,
         )
 
     def definition(self) -> str:
@@ -496,6 +528,7 @@ class _PipelineExecution:
 
     arn: str = attr.ib()
     sagemaker_session: Session = attr.ib(factory=Session)
+    pipeline: Pipeline = attr.ib(factory=Pipeline)
 
     def stop(self):
         """Stops a pipeline execution."""
@@ -515,6 +548,23 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
         return self.sagemaker_session.sagemaker_client.describe_pipeline_execution(
             PipelineExecutionArn=self.arn,
         )
+
+    def display(self):
+        """Prints out a Graphviz DAG visual for a Pipeline's execution
+
+        Returns
+            A Graphviz object representing the execution, if Successful
+        """
+
+        pipelineGraph = PipelineGraph.from_pipeline(self.pipeline)
+        adjacencyList = pipelineGraph.build_adjacency_list_with_condition_edges()
+
+        step_statuses = {}
+        execution_steps = self.list_steps()
+        for step in execution_steps:
+            step_statuses[step["StepName"]] = step["StepStatus"]
+
+        return build_visual_dag(self.pipeline.name, adjacencyList, step_statuses)
 
     def list_steps(self):
         """Describes a pipeline execution's steps.
@@ -658,6 +708,8 @@ class PipelineGraph:
         return False
 
     def build_adjacency_list_with_condition_edges(self) -> List[Dict[str, any]]:
+        """Generates an adjacency list that includes edge labels for Condition Steps"""
+
         adjacency_list = []
         old_adjacency_list = self.adjacency_list
 

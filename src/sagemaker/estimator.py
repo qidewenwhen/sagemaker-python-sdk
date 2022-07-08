@@ -16,6 +16,7 @@ from __future__ import absolute_import, print_function
 import json
 import logging
 import os
+import re
 import uuid
 from abc import ABCMeta, abstractmethod
 from typing import Any, Dict, Union, Optional, List
@@ -145,6 +146,7 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
         code_location: Optional[str] = None,
         entry_point: Optional[str] = None,
         dependencies: Optional[List[Union[str]]] = None,
+        instance_groups: Optional[Dict[str, Union[str, int]]] = None,
         **kwargs,
     ):
         """Initialize an ``EstimatorBase`` instance.
@@ -156,9 +158,10 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
                 artifacts. After the endpoint is created, the inference code
                 might use the IAM role, if it needs to access an AWS resource.
             instance_count (int): Number of Amazon EC2 instances to use
-                for training.
+                for training. Required if instance_groups is not set.
             instance_type (str): Type of EC2 instance to use for training,
-                for example, 'ml.c4.xlarge'.
+                for example, ``'ml.c4.xlarge'``. Required if instance_groups is
+                not set.
             volume_size (int): Size in GB of the EBS volume to use for
                 storing input data during training (default: 30). Must be large
                 enough to store training data if File Mode is used (which is the
@@ -232,7 +235,6 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
             use_spot_instances (bool): Specifies whether to use SageMaker
                 Managed Spot instances for training. If enabled then the
                 ``max_wait`` arg should also be set.
-
                 More information:
                 https://docs.aws.amazon.com/sagemaker/latest/dg/model-managed-spot-training.html
                 (default: ``False``).
@@ -310,19 +312,18 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
                 when training on Amazon SageMaker. If 'git_config' is provided,
                 'source_dir' should be a relative location to a directory in the Git
                 repo.
+                With the following GitHub repo directory structure:
 
-                .. admonition:: Example
+                .. code::
 
-                    With the following GitHub repo directory structure:
+                    |----- README.md
+                    |----- src
+                             |----- train.py
+                             |----- test.py
 
-                    >>> |----- README.md
-                    >>> |----- src
-                    >>>         |----- train.py
-                    >>>         |----- test.py
-
-                    if you need 'train.py' as the entry point and 'test.py' as
-                    the training source code, you can assign
-                    entry_point='train.py' and source_dir='src'.
+                if you need 'train.py' as the entry point and 'test.py' as
+                the training source code, you can assign
+                entry_point='train.py' and source_dir='src'.
             git_config (dict[str, str]): Git configurations used for cloning
                 files, including ``repo``, ``branch``, ``commit``,
                 ``2FA_enabled``, ``username``, ``password``, and ``token``. The
@@ -330,20 +331,19 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
                 ``repo`` specifies the Git repository where your training script
                 is stored. If you don't provide ``branch``, the default value
                 'master' is used. If you don't provide ``commit``, the latest
-                commit in the specified branch is used.
+                commit in the specified branch is used. For example, the following config:
 
-                .. admonition:: Example
+                .. code:: python
 
-                    The following config:
+                    git_config = {
+                        'repo': 'https://github.com/aws/sagemaker-python-sdk.git',
+                        'branch': 'test-branch-git-config',
+                        'commit': '329bfcf884482002c05ff7f44f62599ebc9f445a'
+                    }
 
-                    >>> git_config = {'repo': 'https://github.com/aws/sagemaker-python-sdk.git',
-                    >>>               'branch': 'test-branch-git-config',
-                    >>>               'commit': '329bfcf884482002c05ff7f44f62599ebc9f445a'}
-
-                    results in cloning the repo specified in 'repo', then
-                    checking out the 'master' branch, and checking out the specified
-                    commit.
-
+                results in cloning the repo specified in 'repo', then
+                checking out the 'master' branch, and checking out the specified
+                commit.
                 ``2FA_enabled``, ``username``, ``password``, and ``token`` are
                 used for authentication. For GitHub (or other Git) accounts, set
                 ``2FA_enabled`` to 'True' if two-factor authentication is
@@ -424,7 +424,25 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
                     >>>     |------ virtual-env
 
                 This is not supported with "local code" in Local Mode.
+            instance_groups (list[:class:`sagemaker.instance_group.InstanceGroup`]):
+                Optional. A list of ``InstanceGroup`` objects
+                for launching a training job with a heterogeneous cluster.
+                For example:
 
+                .. code:: python
+
+                    instance_groups=[
+                        sagemaker.InstanceGroup(
+                            'instance_group_name_1', 'ml.p3dn.24xlarge', 64),
+                        sagemaker.InstanceGroup(
+                            'instance_group_name_2', 'ml.c5n.18xlarge', 64)]
+
+                For instructions on how to use ``InstanceGroup`` objects
+                to configure a heterogeneous cluster
+                through the SageMaker generic and framework estimator classes, see
+                `Train Using a Heterogeneous Cluster
+                <https://docs.aws.amazon.com/sagemaker/latest/dg/train-heterogeneous-cluster.html>`_
+                in the *Amazon SageMaker developer guide*.
         """
         instance_count = renamed_kwargs(
             "train_instance_count", "instance_count", instance_count, kwargs
@@ -442,12 +460,10 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
             "train_volume_kms_key", "volume_kms_key", volume_kms_key, kwargs
         )
 
-        if instance_count is None or instance_type is None:
-            raise ValueError("Both instance_count and instance_type are required.")
-
         self.role = role
         self.instance_count = instance_count
         self.instance_type = instance_type
+        self.instance_groups = instance_groups
         self.volume_size = volume_size
         self.volume_kms_key = volume_kms_key
         self.max_run = max_run
@@ -1310,6 +1326,12 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
         drift_check_baselines=None,
         customer_metadata_properties=None,
         domain=None,
+        sample_payload_url=None,
+        task=None,
+        framework=None,
+        framework_version=None,
+        nearest_model_name=None,
+        data_input_configuration=None,
         **kwargs,
     ):
         """Creates a model package for creating SageMaker models or listing on Marketplace.
@@ -1343,6 +1365,18 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
                 metadata properties (default: None).
             domain (str): Domain values can be "COMPUTER_VISION", "NATURAL_LANGUAGE_PROCESSING",
                 "MACHINE_LEARNING" (default: None).
+            sample_payload_url (str): The S3 path where the sample payload is stored
+                (default: None).
+            task (str): Task values which are supported by Inference Recommender are "FILL_MASK",
+                "IMAGE_CLASSIFICATION", "OBJECT_DETECTION", "TEXT_GENERATION", "IMAGE_SEGMENTATION",
+                "CLASSIFICATION", "REGRESSION", "OTHER" (default: None).
+            framework (str): Machine learning framework of the model package container image
+                (default: None).
+            framework_version (str): Framework version of the Model Package Container Image
+                (default: None).
+            nearest_model_name (str): Name of a pre-trained machine learning benchmarked by
+                Amazon SageMaker Inference Recommender (default: None).
+            data_input_configuration (str): Input object for the model (default: None).
             **kwargs: Passed to invocation of ``create_model()``. Implementations may customize
                 ``create_model()`` to accept ``**kwargs`` to customize model creation during
                 deploy. For more, see the implementation docs.
@@ -1380,6 +1414,12 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
             drift_check_baselines=drift_check_baselines,
             customer_metadata_properties=customer_metadata_properties,
             domain=domain,
+            sample_payload_url=sample_payload_url,
+            task=task,
+            framework=framework,
+            framework_version=framework_version,
+            nearest_model_name=nearest_model_name,
+            data_input_configuration=data_input_configuration,
         )
 
     @property
@@ -1492,6 +1532,39 @@ class EstimatorBase(with_metaclass(ABCMeta, object)):  # pylint: disable=too-man
             if max_wait:
                 init_params["max_wait"] = max_wait
         return init_params
+
+    def _get_instance_type(self):
+        """Determine the instance type to be used in the training_image_uri function.
+
+        Returns:
+            instance_type: The instance_type to be used.
+        """
+        if self.instance_type is not None:
+            return self.instance_type
+
+        if not isinstance(self.instance_groups, list) or len(self.instance_groups) == 0:
+            raise ValueError(
+                "instance_groups must be set if instance_type is not set and instance_groups "
+                "must be a list."
+            )
+
+        for instance_group in self.instance_groups:
+            instance_type = instance_group.instance_type
+            match = re.match(r"^ml[\._]([a-z\d]+)\.?\w*$", instance_type)
+
+            if match:
+                family = match[1]
+                if family[0] in ("g", "p"):
+                    return instance_type
+            else:
+                raise ValueError(
+                    "Invalid SageMaker instance type for training with heterogeneous clusters: {}. "
+                    "For options see: https://aws.amazon.com/sagemaker/pricing/instance-types".format(
+                        instance_type
+                    )
+                )
+
+        return self.instance_groups[0].instance_type
 
     def transformer(
         self,
@@ -2079,6 +2152,7 @@ class Estimator(EstimatorBase):
         code_location: Optional[str] = None,
         entry_point: Optional[str] = None,
         dependencies: Optional[List[str]] = None,
+        instance_groups: Optional[Dict[str, Union[str, int]]] = None,
         **kwargs,
     ):
         """Initialize an ``Estimator`` instance.
@@ -2091,9 +2165,10 @@ class Estimator(EstimatorBase):
                 artifacts. After the endpoint is created, the inference code
                 might use the IAM role, if it needs to access an AWS resource.
             instance_count (int): Number of Amazon EC2 instances to use
-                for training.
+                for training. Required if instance_groups is not set.
             instance_type (str): Type of EC2 instance to use for training,
-                for example, 'ml.c4.xlarge'.
+                for example, 'ml.c4.xlarge'. Required if instance_groups is
+                not set.
             volume_size (int): Size in GB of the EBS volume to use for
                 storing input data during training (default: 30). Must be large
                 enough to store training data if File Mode is used (which is the
@@ -2355,6 +2430,25 @@ class Estimator(EstimatorBase):
                     >>>     |------ virtual-env
 
                 This is not supported with "local code" in Local Mode.
+            instance_groups (list[:class:`sagemaker.instance_group.InstanceGroup`]):
+                Optional. A list of ``InstanceGroup`` objects
+                for launching a training job with a heterogeneous cluster.
+                For example:
+
+                .. code:: python
+
+                    instance_groups=[
+                        sagemaker.InstanceGroup(
+                            'instance_group_name_1', 'ml.p3dn.24xlarge', 64),
+                        sagemaker.InstanceGroup(
+                            'instance_group_name_2', 'ml.c5n.18xlarge', 64)]
+
+                For instructions on how to use ``InstanceGroup`` objects
+                to configure a heterogeneous cluster
+                through the SageMaker generic and framework estimator classes, see
+                `Train Using a Heterogeneous Cluster
+                <https://docs.aws.amazon.com/sagemaker/latest/dg/train-heterogeneous-cluster.html>`_
+                in the *Amazon SageMaker developer guide*.
         """
         self.image_uri = image_uri
         self._hyperparameters = hyperparameters.copy() if hyperparameters else {}
@@ -2397,6 +2491,7 @@ class Estimator(EstimatorBase):
             entry_point=entry_point,
             dependencies=dependencies,
             hyperparameters=hyperparameters,
+            instance_groups=instance_groups,
             **kwargs,
         )
 
@@ -2869,7 +2964,7 @@ class Framework(EstimatorBase):
             compiler_config=getattr(self, "compiler_config", None),
             tensorflow_version=getattr(self, "tensorflow_version", None),
             pytorch_version=getattr(self, "pytorch_version", None),
-            instance_type=self.instance_type,
+            instance_type=self._get_instance_type(),
         )
 
     @classmethod
@@ -3077,6 +3172,13 @@ class Framework(EstimatorBase):
         """
         distribution_config = {}
 
+        mpi_enabled = False
+        smdataparallel_enabled = False
+        if "instance_groups" in distribution:
+            distribution_config["sagemaker_distribution_instance_groups"] = distribution[
+                "instance_groups"
+            ]
+
         if "parameter_server" in distribution:
             ps_enabled = distribution.get("parameter_server").get("enabled", False)
             distribution_config[self.LAUNCH_PS_ENV_NAME] = ps_enabled
@@ -3111,6 +3213,13 @@ class Framework(EstimatorBase):
                 distribution_config[self.SM_DDP_CUSTOM_MPI_OPTIONS] = smdistributed[
                     "dataparallel"
                 ].get("custom_mpi_options", "")
+
+        if not (mpi_enabled or smdataparallel_enabled) and distribution_config.get(
+            "sagemaker_distribution_instance_groups"
+        ) not in [None, []]:
+            raise ValueError(
+                "Don't set training instance groups while no distribution strategies enabled!"
+            )
 
         return distribution_config
 

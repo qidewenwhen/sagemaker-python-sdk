@@ -17,8 +17,16 @@ import pytest
 from mock import Mock, PropertyMock
 
 from sagemaker import Model
-from sagemaker.workflow.parameters import ParameterString
 from sagemaker.workflow.pipeline_context import PipelineSession
+from sagemaker.workflow import is_pipeline_variable, is_pipeline_parameter_string
+from sagemaker.workflow.parameters import (
+    ParameterString,
+    ParameterInteger,
+    ParameterBoolean,
+    ParameterFloat,
+)
+from sagemaker.workflow.functions import Join, JsonGet
+from tests.unit.sagemaker.workflow.helpers import CustomStep
 
 from botocore.config import Config
 
@@ -130,6 +138,46 @@ def test_pipeline_session_context_for_model_step(pipeline_session_mock):
     assert len(register_step_args.need_runtime_repack) == 0
 
 
+@pytest.mark.parametrize(
+    "item",
+    [
+        (ParameterString(name="my-str"), True),
+        (ParameterBoolean(name="my-bool"), True),
+        (ParameterFloat(name="my-float"), True),
+        (ParameterInteger(name="my-int"), True),
+        (Join(on="/", values=["my", "value"]), True),
+        (JsonGet(step_name="my-step", property_file="pf", json_path="path"), True),
+        (CustomStep(name="my-step").properties.OutputDataConfig.S3OutputPath, True),
+        ("my-str", False),
+        (1, False),
+        (CustomStep(name="my-ste"), False),
+    ],
+)
+def test_is_pipeline_variable(item):
+    var, assertion = item
+    assert is_pipeline_variable(var) == assertion
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        (ParameterString(name="my-str"), True),
+        (ParameterBoolean(name="my-bool"), False),
+        (ParameterFloat(name="my-float"), False),
+        (ParameterInteger(name="my-int"), False),
+        (Join(on="/", values=["my", "value"]), False),
+        (JsonGet(step_name="my-step", property_file="pf", json_path="path"), False),
+        (CustomStep(name="my-step").properties.OutputDataConfig.S3OutputPath, False),
+        ("my-str", False),
+        (1, False),
+        (CustomStep(name="my-ste"), False),
+    ],
+)
+def test_is_pipeline_parameter_string(item):
+    var, assertion = item
+    assert is_pipeline_parameter_string(var) == assertion
+
+
 def test_pipeline_session_context_for_model_step_without_instance_types(
     pipeline_session_mock,
 ):
@@ -151,7 +199,6 @@ def test_pipeline_session_context_for_model_step_without_instance_types(
         framework="TENSORFLOW",
         framework_version="2.9",
         nearest_model_name="resnet50",
-        data_input_configuration='{"input_1":[1,224,224,3]}',
     )
 
     expected_output = {
@@ -173,9 +220,6 @@ def test_pipeline_session_context_for_model_step_without_instance_types(
                     "Framework": "TENSORFLOW",
                     "FrameworkVersion": "2.9",
                     "NearestModelName": "resnet50",
-                    "ModelInput": {
-                        "DataInputConfig": '{"input_1":[1,224,224,3]}',
-                    },
                 }
             ],
             "SupportedContentTypes": ["text/csv"],

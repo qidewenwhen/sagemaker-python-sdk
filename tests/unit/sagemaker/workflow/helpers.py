@@ -37,6 +37,23 @@ def ordered(obj):
         return obj
 
 
+def equal_adjacency_list_with_edges(output, expected):
+    assert len(output) == len(expected)
+
+    sorted(output, key=lambda x: x["StepName"])
+    sorted(expected, key=lambda x: x["StepName"])
+
+    for i in range(len(output)):
+        assert output[i]["StepName"] == expected[i]["StepName"]
+        output_outBoundEdges = sorted(output[i]["OutBoundEdges"], key=lambda x: x["nextStepName"])
+        expected_outBoundEdges = sorted(
+            expected[i]["OutBoundEdges"], key=lambda x: x["nextStepName"]
+        )
+        assert len(output_outBoundEdges) == len(expected_outBoundEdges)
+        for j in range(len(output_outBoundEdges)):
+            assert output_outBoundEdges[j] == expected_outBoundEdges[j]
+
+
 class CustomStep(Step):
     def __init__(self, name, input_data=None, display_name=None, description=None, depends_on=None):
         self.input_data = input_data

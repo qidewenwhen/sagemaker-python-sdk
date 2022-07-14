@@ -14,6 +14,7 @@
 from __future__ import absolute_import
 
 import json
+from collections import defaultdict
 
 from copy import deepcopy
 from typing import Any, Dict, List, Sequence, Union, Optional
@@ -33,7 +34,12 @@ from sagemaker.workflow.entities import (
     RequestType,
 )
 from sagemaker.workflow.execution_variables import ExecutionVariables
-from sagemaker.workflow.parameters import Parameter
+from sagemaker.workflow.parameters import (
+    Parameter,
+    ParameterString,
+    ParameterInteger,
+    ParameterFloat,
+)
 from sagemaker.workflow.pipeline_experiment_config import PipelineExperimentConfig
 from sagemaker.workflow.parallelism_config import ParallelismConfiguration
 from sagemaker.workflow.properties import Properties
@@ -42,21 +48,39 @@ from sagemaker.workflow.step_collections import StepCollection
 from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.utilities import list_to_request
 
+STEP_COLORS = {"Succeeded": "green", "Failed": "red", "Executing": "blue", "Not Executed": "grey"}
+PARAMETER_TYPE = {"String": ParameterString, "Integer": ParameterInteger, "Float": ParameterFloat}
 
-def load(pipeline_arn: str):
-    """Loads a new Pipeline object with information from a pipeline in the Tioga backend.
 
-    The steps in the object will be left empty
+def load(pipeline_name: str, sagemaker_session: Session = Session()):
+    """Loads an existing pipeline based on the pipeline name and returns a Pipeline object
+
+    Note: the steps in the object are left empty
 
     Args:
-        pipeline_arn (str): pipeline arn for a specific pipeline in Tioga backend
+        pipeline_name (str): the name for a specific pipeline
+        sagemaker_session (sagemaker.session.Session): Session object that manages interactions
+            with Amazon SageMaker APIs and any other AWS services needed. If not specified, the
+            pipeline creates one using the default AWS configuration chain.
 
     Returns:
         Pipeline object
     """
-    pipelineEntity = Pipeline.sagemaker_session.sagemaker_client.describe_pipeline(pipeline_arn)
-    pipelineDefinition = pipelineEntity["PipelineDefinition"]
-    return Pipeline(pipelineEntity["PipelineName"], pipelineDefinition["Parameters"], [])
+    pipelineEntity = sagemaker_session.sagemaker_client.describe_pipeline(
+        PipelineName=pipeline_name
+    )
+    pipelineDefinition = json.loads(pipelineEntity["PipelineDefinition"])
+
+    parameters = []
+
+    for parameter in pipelineDefinition["Parameters"]:
+        parameters.append(
+            PARAMETER_TYPE[parameter["Type"]](
+                name=parameter["Name"], default_value=parameter["DefaultValue"]
+            )
+        )
+
+    return ImmutablePipeline(name=pipelineEntity["PipelineName"], parameters=parameters, steps=[])
 
 
 def build_visual_dag(
@@ -65,7 +89,7 @@ def build_visual_dag(
     """Builds a Graphviz object that visualizes a pipeline/execution
 
     Args:
-        pipeline_name (str): pipeline name for the visualized pipeline
+        pipelien_name (str): pipeline name for the visualized pipeline
         adjacency_list (List[Dict[str, any]]): adjacency list for the visualized pipeline
         step_statuses (Dict[str, str]): step statuses of the steps in an execution
 
@@ -80,14 +104,12 @@ def build_visual_dag(
             "and rerun command"
         )
 
-    color = {"Succeeded": "green", "Failed": "red", "Executing": "blue", "Not Executed": "grey"}
-
     G = graphviz.Digraph(pipeline_name, strict=True)
 
     for step in adjacency_list:
         parent = step["StepName"]
         status = step_statuses[parent] if parent in step_statuses else "Not Executed"
-        G.node(parent, color=color[status], style="filled")
+        G.node(parent, color=STEP_COLORS[status], style="filled")
         for child in step["OutBoundEdges"]:
             child_name = child["nextStepName"]
             edge = child["edgeLabel"]
@@ -236,10 +258,12 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
         """
 
         pipelineGraph = PipelineGraph.from_pipeline(self)
-        adjacencyList = pipelineGraph.build_adjacency_list_with_condition_edges()
+        adjacencyList = pipelineGraph.adjacency_list_with_edge_labels
         stepStatuses = {}
 
-        return build_visual_dag(self.name, adjacencyList, stepStatuses)
+        return build_visual_dag(
+            pipeline_name=self.name, adjacency_list=adjacencyList, step_statuses=stepStatuses
+        )
 
     def update(
         self,
@@ -515,6 +539,51 @@ def update_args(args: Dict[str, Any], **kwargs):
             args.update({key: value})
 
 
+class ImmutablePipeline(Pipeline):
+    """ImmutablePipeline to support pipelines that should be immutable."""
+
+    def update(
+        self,
+        role_arn: str,
+        description: str = None,
+        parallelism_config: ParallelismConfiguration = None,
+    ):
+        """Prevents an update on an ImmutablePipeline in the Workflow service.
+
+        Args:
+            role_arn (str): The role arn that is assumed by pipelines to create step artifacts.
+            description (str): A description of the pipeline.
+            parallelism_config (Optional[ParallelismConfiguration]): Parallelism configuration
+                that is applied to each of the executions of the pipeline. It takes precedence
+                over the parallelism configuration of the parent pipeline.
+
+        Returns:
+            Exception
+        """
+        raise Exception("Immutable Pipelines cannot be updated")
+
+    def upsert(
+        self,
+        role_arn: str,
+        description: str = None,
+        tags: List[Dict[str, str]] = None,
+        parallelism_config: ParallelismConfiguration = None,
+    ):
+        """Prevents an update on an ImmutablePipeline in the Workflow service.
+
+        Args:
+            role_arn (str): The role arn that is assumed by pipelines to create step artifacts.
+            description (str): A description of the pipeline.
+            parallelism_config (Optional[ParallelismConfiguration]): Parallelism configuration
+                that is applied to each of the executions of the pipeline. It takes precedence
+                over the parallelism configuration of the parent pipeline.
+
+        Returns:
+            Exception
+        """
+        raise Exception("Immutable Pipelines cannot be updated")
+
+
 @attr.s
 class _PipelineExecution:
     """Internal class for encapsulating pipeline execution instances.
@@ -524,11 +593,12 @@ class _PipelineExecution:
         sagemaker_session (sagemaker.session.Session): Session object which manages interactions
             with Amazon SageMaker APIs and any other AWS services needed. If not specified, the
             pipeline creates one using the default AWS configuration chain.
+        pipeline (Pipeline): Pipeline object tied to the current _PipelineExecution object
     """
 
     arn: str = attr.ib()
     sagemaker_session: Session = attr.ib(factory=Session)
-    pipeline: Pipeline = attr.ib(factory=Pipeline)
+    pipeline: Pipeline = attr.ib(default=None)
 
     def stop(self):
         """Stops a pipeline execution."""
@@ -557,14 +627,18 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
         """
 
         pipelineGraph = PipelineGraph.from_pipeline(self.pipeline)
-        adjacencyList = pipelineGraph.build_adjacency_list_with_condition_edges()
+        adjacencyList = pipelineGraph.adjacency_list_with_edge_labels
 
         step_statuses = {}
         execution_steps = self.list_steps()
         for step in execution_steps:
             step_statuses[step["StepName"]] = step["StepStatus"]
 
-        return build_visual_dag(self.pipeline.name, adjacencyList, step_statuses)
+        return build_visual_dag(
+            pipeline_name=self.pipeline.name,
+            adjacency_list=adjacencyList,
+            step_statuses=step_statuses,
+        )
 
     def list_steps(self):
         """Describes a pipeline execution's steps.
@@ -634,6 +708,7 @@ class PipelineGraph:
         self.step_map = {}
         self._generate_step_map(steps)
         self.adjacency_list = self._initialize_adjacency_list()
+        self.adjacency_list_with_edge_labels = self.build_adjacency_list_with_condition_edges()
         if self.is_cyclic():
             raise ValueError("Cycle detected in pipeline step graph.")
 
@@ -641,7 +716,7 @@ class PipelineGraph:
         """Helper method to create a mapping from Step/Step Collection name to itself."""
         for step in steps:
             if step.name in self.step_map:
-                raise ValueError("Pipeline steps cannot have duplicate names.")
+                raise ValueError("Pipeline steps cannot have duplicate names. {}".format(step.name))
             self.step_map[step.name] = step
             if isinstance(step, ConditionStep):
                 self._generate_step_map(step.if_steps + step.else_steps)
@@ -655,7 +730,6 @@ class PipelineGraph:
 
     def _initialize_adjacency_list(self) -> Dict[str, List[str]]:
         """Generate an adjacency list representing the step dependency DAG in this pipeline."""
-        from collections import defaultdict
 
         dependency_list = defaultdict(set)
         for step in self.step_map.values():
@@ -713,21 +787,21 @@ class PipelineGraph:
         adjacency_list = []
         old_adjacency_list = self.adjacency_list
 
-        ifSteps = []
-        elseSteps = []
+        if_edges = defaultdict(set)
+        else_edges = defaultdict(set)
 
         for step in self.step_map.values():
             if isinstance(step, ConditionStep):
                 for child_step in step.if_steps:
                     if isinstance(child_step, Step):
-                        ifSteps.append(child_step.name)
+                        if_edges[step.name].add(child_step.name)
                     elif isinstance(child_step, StepCollection):
-                        ifSteps.append(self.step_map[child_step.name].steps[0].name)
+                        if_edges[step.name].add(self.step_map[child_step.name].steps[0].name)
                 for child_step in step.else_steps:
                     if isinstance(child_step, Step):
-                        elseSteps.append(child_step.name)
+                        else_edges[step.name].add(child_step.name)
                     elif isinstance(child_step, StepCollection):
-                        elseSteps.append(self.step_map[child_step.name].steps[0].name)
+                        else_edges[step.name].add(self.step_map[child_step.name].steps[0].name)
 
         for step in old_adjacency_list:
             adjacency_list_step = {}
@@ -735,9 +809,9 @@ class PipelineGraph:
             out_bound_edges = []
             for child_step in old_adjacency_list[step]:
                 out_bound_edge = {"nextStepName": child_step}
-                if child_step in ifSteps:
+                if step in if_edges and child_step in if_edges[step]:
                     out_bound_edge["edgeLabel"] = "True"
-                elif child_step in elseSteps:
+                elif step in else_edges and child_step in else_edges[step]:
                     out_bound_edge["edgeLabel"] = "False"
                 else:
                     out_bound_edge["edgeLabel"] = None

@@ -78,7 +78,7 @@ from sagemaker.workflow.steps import (
     TuningStep,
 )
 from sagemaker.workflow.step_collections import RegisterModel
-from sagemaker.workflow.pipeline import Pipeline
+from sagemaker.workflow.pipeline import Pipeline, load, ImmutablePipeline
 from sagemaker.feature_store.feature_group import (
     FeatureGroup,
     FeatureDefinition,
@@ -506,7 +506,7 @@ def test_one_step_ingestion_pipeline(
         )
     ]
 
-    feature_group_name = f"py-sdk-integ-fg-{int(time.time() * 10**7)}"
+    feature_group_name = f"py-sdk-integ-fg-{int(time.time() * 10 ** 7)}"
     feature_group = FeatureGroup(
         name=feature_group_name,
         feature_definitions=feature_definitions,
@@ -1120,6 +1120,56 @@ def test_model_registration_with_tuning_model(
             if _REGISTER_MODEL_NAME_BASE in step["StepName"]:
                 assert step["Metadata"]["RegisterModel"]
         assert len(execution_steps) == 3
+    finally:
+        try:
+            pipeline.delete()
+        except Exception:
+            pass
+
+
+def test_load_method(sagemaker_session, role, pipeline_name, region_name):
+    instance_count = ParameterInteger(name="InstanceCount", default_value=2)
+
+    outputParam = CallbackOutput(output_name="output", output_type=CallbackOutputTypeEnum.String)
+
+    callback_steps = [
+        CallbackStep(
+            name="callback-step",
+            sqs_queue_url="https://sqs.us-east-2.amazonaws.com/123456789012/MyQueue",
+            inputs={"arg1": "foo"},
+            outputs=[outputParam],
+        )
+    ]
+    pipeline = Pipeline(
+        name=pipeline_name,
+        parameters=[instance_count],
+        steps=callback_steps,
+        sagemaker_session=sagemaker_session,
+    )
+
+    try:
+        response = pipeline.create(role)
+        create_arn = response["PipelineArn"]
+        assert re.match(
+            rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name}",
+            create_arn,
+        )
+        assert len(json.loads(pipeline.describe()["PipelineDefinition"])["Steps"]) == 1
+
+        pipeline.parameters = [ParameterInteger(name="InstanceCount", default_value=1)]
+        response = pipeline.upsert(role)
+        update_arn = response["PipelineArn"]
+        assert re.match(
+            rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name}",
+            update_arn,
+        )
+
+        loaded_pipeline = load(update_arn)
+        assert pipeline.name == loaded_pipeline.name
+        assert pipeline.parameters == loaded_pipeline.parameters
+        assert len(loaded_pipeline.steps) == 0
+        assert isinstance(loaded_pipeline, ImmutablePipeline)
+
     finally:
         try:
             pipeline.delete()

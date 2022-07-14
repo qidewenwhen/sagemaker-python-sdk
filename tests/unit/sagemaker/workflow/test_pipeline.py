@@ -530,6 +530,62 @@ def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_sess
     )
 
 
+@patch("sagemaker.workflow.pipeline.build_visual_dag")
+def test_immutable_pipeline_display(build_visual_dag, sagemaker_session_mock):
+    step1 = CustomStep(
+        name="MyStep1",
+        input_data=[
+            [],  # parameter reference
+            ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
+            PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
+        ],
+    )
+    step2 = CustomStep(
+        name="MyStep2", input_data=[step1.properties.ModelArtifacts.S3ModelArtifacts]
+    )  # step property
+
+    step3 = CustomStep(
+        name="MyStep3", input_data=[step2.properties.ModelArtifacts.S3ModelArtifacts]
+    )
+
+    pipeline = ImmutablePipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[step1, step2, step3],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    describeGraphResponse = {
+        "PipelineName": "MyPipeline",
+        "AdjacencyList": [
+            {
+                "StepName": "MyStep1",
+                "OutBoundEdges": [{"nextStepName": "MyStep2", "edgeLabel": None}],
+            },
+            {
+                "StepName": "MyStep2",
+                "OutBoundEdges": [{"nextStepName": "MyStep3", "edgeLabel": None}],
+            },
+            {"StepName": "MyStep3", "OutBoundEdges": []},
+        ],
+    }
+
+    sagemaker_session_mock.sagemaker_client.describe_pipeline.return_value = {
+        "PipelineArn": "pipeline-arn"
+    }
+    sagemaker_session_mock.sagemaker_client.describe_pipeline_graph.return_value = (
+        describeGraphResponse
+    )
+
+    pipeline.display()
+
+    build_visual_dag.assert_called_with(
+        pipeline_name="MyPipeline",
+        adjacency_list=describeGraphResponse["AdjacencyList"],
+        step_statuses={},
+    )
+
+
 def test_pipeline_start(sagemaker_session_mock):
     sagemaker_session_mock.sagemaker_client.start_pipeline_execution.return_value = {
         "PipelineExecutionArn": "my:arn"

@@ -89,7 +89,7 @@ def build_visual_dag(
     """Builds a Graphviz object that visualizes a pipeline/execution
 
     Args:
-        pipelien_name (str): pipeline name for the visualized pipeline
+        pipeline_name (str): pipeline name for the visualized pipeline
         adjacency_list (List[Dict[str, any]]): adjacency list for the visualized pipeline
         step_statuses (Dict[str, str]): step statuses of the steps in an execution
 
@@ -541,6 +541,34 @@ def update_args(args: Dict[str, Any], **kwargs):
 
 class ImmutablePipeline(Pipeline):
     """ImmutablePipeline to support pipelines that should be immutable."""
+
+    def display(self, pipeline_arn: str = None):
+        """Prints out a Graphviz DAG visual for the Pipeline
+
+        Args:
+        pipeline_arn (str): The pipeline arn for the desired pipeline.
+
+        Returns:
+            A Graphviz object representing the pipeline, if successful.
+        """
+        if pipeline_arn is None:
+            pipeline = self.sagemaker_session.sagemaker_client.describe_pipeline(
+                PipelineName=self.name
+            )
+            pipelineArn = pipeline["PipelineArn"]
+            response = self.sagemaker_session.sagemaker_client.describe_pipeline_graph(
+                PipelineArn=pipelineArn
+            )
+        else:
+            response = self.sagemaker_session.sagemaker_client.describe_pipeline_graph(
+                PipelineArn=pipeline_arn
+            )
+        adjacencyList = response["AdjacencyList"]
+        stepStatuses = {}
+
+        return build_visual_dag(
+            pipeline_name=self.name, adjacency_list=adjacencyList, step_statuses=stepStatuses
+        )
 
     def update(
         self,

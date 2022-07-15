@@ -543,10 +543,10 @@ class ImmutablePipeline(Pipeline):
     """ImmutablePipeline to support pipelines that should be immutable."""
 
     def display(self, pipeline_arn: str = None):
-        """Prints out a Graphviz DAG visual for the Pipeline
+        """Prints out a Directed Acyclic Graph visual of the Pipeline
 
         Args:
-        pipeline_arn (str): The pipeline arn for the desired pipeline.
+        pipeline_arn (str): The pipeline arn for the desired pipeline to display.
 
         Returns:
             A Graphviz object representing the pipeline, if successful.
@@ -570,7 +570,6 @@ class ImmutablePipeline(Pipeline):
             pipeline_name=self.name, adjacency_list=adjacencyList, step_statuses=stepStatuses
         )
 
-
     def update(
         self,
         role_arn: str,
@@ -590,7 +589,6 @@ class ImmutablePipeline(Pipeline):
             Exception
         """
         raise RuntimeError("Immutable Pipelines cannot be updated")
-        
 
     def upsert(
         self,

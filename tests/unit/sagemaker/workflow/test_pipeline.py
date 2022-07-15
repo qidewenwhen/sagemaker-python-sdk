@@ -532,26 +532,10 @@ def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_sess
 
 @patch("sagemaker.workflow.pipeline.build_visual_dag")
 def test_immutable_pipeline_display(build_visual_dag, sagemaker_session_mock):
-    step1 = CustomStep(
-        name="MyStep1",
-        input_data=[
-            [],  # parameter reference
-            ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
-            PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
-        ],
-    )
-    step2 = CustomStep(
-        name="MyStep2", input_data=[step1.properties.ModelArtifacts.S3ModelArtifacts]
-    )  # step property
-
-    step3 = CustomStep(
-        name="MyStep3", input_data=[step2.properties.ModelArtifacts.S3ModelArtifacts]
-    )
-
     pipeline = ImmutablePipeline(
         name="MyPipeline",
         parameters=[],
-        steps=[step1, step2, step3],
+        steps=[],
         sagemaker_session=sagemaker_session_mock,
     )
 
@@ -585,7 +569,7 @@ def test_immutable_pipeline_display(build_visual_dag, sagemaker_session_mock):
         step_statuses={},
     )
 
-    
+
 def test_pipeline_start(sagemaker_session_mock):
     sagemaker_session_mock.sagemaker_client.start_pipeline_execution.return_value = {
         "PipelineExecutionArn": "my:arn"

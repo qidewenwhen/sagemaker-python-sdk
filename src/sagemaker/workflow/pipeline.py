@@ -89,7 +89,7 @@ def build_visual_dag(
     """Builds a Graphviz object that visualizes a pipeline/execution
 
     Args:
-        pipelien_name (str): pipeline name for the visualized pipeline
+        pipeline_name (str): pipeline name for the visualized pipeline
         adjacency_list (List[Dict[str, any]]): adjacency list for the visualized pipeline
         step_statuses (Dict[str, str]): step statuses of the steps in an execution
 
@@ -552,15 +552,15 @@ class ImmutablePipeline(Pipeline):
 
         Args:
             role_arn (str): The role arn that is assumed by pipelines to create step artifacts.
-            description (str): A description of the pipeline.
-            parallelism_config (Optional[ParallelismConfiguration]): Parallelism configuration
+            description (str): A description of the pipeline. (Defaults to None)
+            parallelism_config (ParallelismConfiguration): Parallelism configuration
                 that is applied to each of the executions of the pipeline. It takes precedence
-                over the parallelism configuration of the parent pipeline.
+                over the parallelism configuration of the parent pipeline. (Defaults to None)
 
         Returns:
             Exception
         """
-        raise Exception("Immutable Pipelines cannot be updated")
+        raise RuntimeError("Immutable Pipelines cannot be updated")
 
     def upsert(
         self,
@@ -573,15 +573,17 @@ class ImmutablePipeline(Pipeline):
 
         Args:
             role_arn (str): The role arn that is assumed by pipelines to create step artifacts.
-            description (str): A description of the pipeline.
-            parallelism_config (Optional[ParallelismConfiguration]): Parallelism configuration
+            description (str): A description of the pipeline. (Defaults to None)
+            tags (List[Dict[str, str]]): A list of {"Key": "string", "Value": "string"} dicts as
+                tags. (Defaults to None)
+            parallelism_config (ParallelismConfiguration): Parallelism configuration
                 that is applied to each of the executions of the pipeline. It takes precedence
-                over the parallelism configuration of the parent pipeline.
+                over the parallelism configuration of the parent pipeline. (Defaults to None)
 
         Returns:
             Exception
         """
-        raise Exception("Immutable Pipelines cannot be updated")
+        raise RuntimeError("Immutable Pipelines cannot be updated")
 
 
 @attr.s

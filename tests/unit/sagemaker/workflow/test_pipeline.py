@@ -14,21 +14,34 @@
 from __future__ import absolute_import
 
 import json
+from datetime import datetime
+from unittest.mock import patch
 
+from dateutil.tz import tzlocal
+from mock import Mock
 import pytest
 
-from mock import Mock
-
 from sagemaker import s3
+from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.execution_variables import ExecutionVariables
 from sagemaker.workflow.parameters import ParameterString
-from sagemaker.workflow.pipeline import Pipeline, PipelineGraph
+from sagemaker.workflow.pipeline import (
+    Pipeline,
+    PipelineGraph,
+    _PipelineExecution,
+    ImmutablePipeline,
+)
 from sagemaker.workflow.parallelism_config import ParallelismConfiguration
 from sagemaker.workflow.pipeline_experiment_config import (
     PipelineExperimentConfig,
     PipelineExperimentConfigProperties,
 )
-from tests.unit.sagemaker.workflow.helpers import ordered, CustomStep
+from sagemaker.workflow.step_collections import StepCollection
+from tests.unit.sagemaker.workflow.helpers import (
+    ordered,
+    CustomStep,
+    equal_adjacency_list_with_edges,
+)
 
 
 @pytest.fixture
@@ -213,6 +226,307 @@ def test_pipeline_describe(sagemaker_session_mock):
     pipeline.describe()
     assert sagemaker_session_mock.sagemaker_client.describe_pipeline.called_with(
         PipelineName="MyPipeline",
+    )
+
+
+def test_immutable_pipeline_update(sagemaker_session_mock):
+    step1 = CustomStep("Step1")
+    pipeline = ImmutablePipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[step1],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    with pytest.raises(Exception) as error:
+        pipeline.update(role_arn="")
+
+    assert str(error.value) == "Immutable Pipelines cannot be updated"
+
+
+def test_immutable_pipeline_upsert(sagemaker_session_mock):
+    step1 = CustomStep("Step1")
+    pipeline = ImmutablePipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[step1],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    with pytest.raises(Exception) as error:
+        pipeline.upsert(role_arn="")
+
+    assert str(error.value) == "Immutable Pipelines cannot be updated"
+
+
+def test_pipeline_build_adjacency_list_with_condition_edges_without_condition_steps(
+    sagemaker_session_mock,
+):
+    step1 = CustomStep(
+        name="MyStep1",
+        input_data=[
+            [],  # parameter reference
+            ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
+            PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
+        ],
+    )
+    step2 = CustomStep(
+        name="MyStep2", input_data=[step1.properties.ModelArtifacts.S3ModelArtifacts]
+    )  # step property
+
+    step3 = CustomStep(
+        name="MyStep3", input_data=[step2.properties.ModelArtifacts.S3ModelArtifacts]
+    )
+
+    pipeline = Pipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[step1, step2, step3],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    pipelineGraph = PipelineGraph.from_pipeline(pipeline)
+    output = pipelineGraph.adjacency_list_with_edge_labels
+
+    expected = [
+        {
+            "StepName": "MyStep1",
+            "OutBoundEdges": [{"nextStepName": "MyStep2", "edgeLabel": None}],
+        },
+        {
+            "StepName": "MyStep2",
+            "OutBoundEdges": [{"nextStepName": "MyStep3", "edgeLabel": None}],
+        },
+        {"StepName": "MyStep3", "OutBoundEdges": []},
+    ]
+
+    equal_adjacency_list_with_edges(output, expected)
+
+
+def test_pipeline_build_adjacency_list_with_condition_edges_with_condition_step(
+    sagemaker_session_mock,
+):
+    ifStep1 = CustomStep("IfStep1")
+    ifStep2 = CustomStep("IfStep2")
+    elseStep1 = CustomStep("ElseStep1")
+    elseStep2 = CustomStep("ElseStep2")
+    normalStep1 = CustomStep(
+        "NormalStep", input_data=[elseStep2.properties.ModelArtifacts.S3ModelArtifacts]
+    )
+
+    conditionStep = ConditionStep(
+        name="ConditionStep",
+        conditions=[],
+        if_steps=[ifStep1, ifStep2],
+        else_steps=[elseStep1, elseStep2],
+    )
+
+    pipeline = Pipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[conditionStep, normalStep1],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    pipelineGraph = PipelineGraph.from_pipeline(pipeline)
+    output = pipelineGraph.adjacency_list_with_edge_labels
+
+    expected = [
+        {
+            "StepName": "ConditionStep",
+            "OutBoundEdges": [
+                {"nextStepName": "ElseStep2", "edgeLabel": "False"},
+                {"nextStepName": "ElseStep1", "edgeLabel": "False"},
+                {"nextStepName": "IfStep2", "edgeLabel": "True"},
+                {"nextStepName": "IfStep1", "edgeLabel": "True"},
+            ],
+        },
+        {
+            "StepName": "ElseStep2",
+            "OutBoundEdges": [{"nextStepName": "NormalStep", "edgeLabel": None}],
+        },
+        {"StepName": "IfStep1", "OutBoundEdges": []},
+        {"StepName": "IfStep2", "OutBoundEdges": []},
+        {"StepName": "ElseStep1", "OutBoundEdges": []},
+        {"StepName": "NormalStep", "OutBoundEdges": []},
+    ]
+
+    equal_adjacency_list_with_edges(output, expected)
+
+
+def test_pipeline_build_adjacency_list_with_condition_edges_with_step_collection(
+    sagemaker_session_mock,
+):
+    step1 = CustomStep(
+        name="MyStep1",
+        input_data=[
+            [],
+            ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
+            PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
+        ],
+    )
+    step2 = CustomStep(
+        name="MyStep2", input_data=[step1.properties.ModelArtifacts.S3ModelArtifacts]
+    )  # step property
+
+    step_collection = StepCollection(name="MyStepCollection", steps=[step1, step2])
+
+    conditionStep = ConditionStep(
+        name="ConditionStep",
+        conditions=[],
+        if_steps=[step_collection],
+        else_steps=[],
+    )
+
+    pipeline = Pipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[conditionStep],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    pipelineGraph = PipelineGraph.from_pipeline(pipeline)
+    output = pipelineGraph.adjacency_list_with_edge_labels
+
+    expected = [
+        {
+            "StepName": "ConditionStep",
+            "OutBoundEdges": [
+                {"nextStepName": "MyStep1", "edgeLabel": "True"},
+            ],
+        },
+        {
+            "StepName": "MyStep1",
+            "OutBoundEdges": [{"nextStepName": "MyStep2", "edgeLabel": None}],
+        },
+        {"StepName": "MyStep2", "OutBoundEdges": []},
+    ]
+
+    equal_adjacency_list_with_edges(output, expected)
+
+
+@patch("sagemaker.workflow.pipeline.build_visual_dag")
+def test_sdk_pipeline_display(build_visual_dag, sagemaker_session_mock):
+    ifStep1 = CustomStep("IfStep1")
+    ifStep2 = CustomStep("IfStep2")
+    elseStep1 = CustomStep("ElseStep1")
+    elseStep2 = CustomStep("ElseStep2")
+    normalStep1 = CustomStep(
+        "NormalStep", input_data=[elseStep2.properties.ModelArtifacts.S3ModelArtifacts]
+    )
+
+    conditionStep = ConditionStep(
+        name="ConditionStep",
+        conditions=[],
+        if_steps=[ifStep1, ifStep2],
+        else_steps=[elseStep1, elseStep2],
+    )
+
+    pipeline = Pipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[conditionStep, normalStep1],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    pipeline.display()
+
+    actual_adj_list = PipelineGraph.from_pipeline(pipeline).adjacency_list_with_edge_labels
+
+    expected = [
+        {
+            "StepName": "ConditionStep",
+            "OutBoundEdges": [
+                {"nextStepName": "ElseStep2", "edgeLabel": "False"},
+                {"nextStepName": "ElseStep1", "edgeLabel": "False"},
+                {"nextStepName": "IfStep2", "edgeLabel": "True"},
+                {"nextStepName": "IfStep1", "edgeLabel": "True"},
+            ],
+        },
+        {
+            "StepName": "ElseStep2",
+            "OutBoundEdges": [{"nextStepName": "NormalStep", "edgeLabel": None}],
+        },
+        {"StepName": "IfStep1", "OutBoundEdges": []},
+        {"StepName": "IfStep2", "OutBoundEdges": []},
+        {"StepName": "ElseStep1", "OutBoundEdges": []},
+        {"StepName": "NormalStep", "OutBoundEdges": []},
+    ]
+
+    equal_adjacency_list_with_edges(actual_adj_list, expected)
+    build_visual_dag.assert_called_with(
+        pipeline_name="MyPipeline", adjacency_list=actual_adj_list, step_statuses={}
+    )
+
+
+@patch("sagemaker.workflow.pipeline.build_visual_dag")
+@patch.object(_PipelineExecution, "list_steps")
+def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_session_mock):
+    step1 = CustomStep(
+        name="MyStep1",
+        input_data=[
+            [],
+            ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
+            PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
+        ],
+    )
+    step2 = CustomStep(
+        name="MyStep2", input_data=[step1.properties.ModelArtifacts.S3ModelArtifacts]
+    )  # step property
+
+    step3 = CustomStep(
+        name="MyStep3", input_data=[step2.properties.ModelArtifacts.S3ModelArtifacts]
+    )
+
+    pipeline = Pipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[step1, step2, step3],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    execution = _PipelineExecution(
+        arn="arn", sagemaker_session=pipeline.sagemaker_session, pipeline=pipeline
+    )
+
+    list_steps.return_value = [
+        {
+            "StepName": "MyStep1",
+            "StartTime": datetime(2022, 7, 12, 17, 52, 19, 433000, tzinfo=tzlocal()),
+            "StepStatus": "Succeeded",
+            "AttemptCount": 0,
+            "Metadata": {},
+        },
+        {
+            "StepName": "MyStep2",
+            "StartTime": datetime(2022, 7, 12, 17, 52, 20, 433000, tzinfo=tzlocal()),
+            "StepStatus": "Failed",
+            "AttemptCount": 0,
+            "Metadata": {},
+        },
+    ]
+
+    step_statuses = {"MyStep1": "Succeeded", "MyStep2": "Failed"}
+
+    execution.display()
+
+    actual_adj_list = PipelineGraph.from_pipeline(pipeline).adjacency_list_with_edge_labels
+
+    expected = [
+        {
+            "StepName": "MyStep1",
+            "OutBoundEdges": [{"nextStepName": "MyStep2", "edgeLabel": None}],
+        },
+        {
+            "StepName": "MyStep2",
+            "OutBoundEdges": [{"nextStepName": "MyStep3", "edgeLabel": None}],
+        },
+        {"StepName": "MyStep3", "OutBoundEdges": []},
+    ]
+
+    equal_adjacency_list_with_edges(actual_adj_list, expected)
+    build_visual_dag.assert_called_with(
+        pipeline_name="MyPipeline", adjacency_list=actual_adj_list, step_statuses=step_statuses
     )
 
 

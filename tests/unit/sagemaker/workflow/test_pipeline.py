@@ -360,7 +360,7 @@ def test_pipeline_build_adjacency_list_with_condition_edges_with_step_collection
     step1 = CustomStep(
         name="MyStep1",
         input_data=[
-            [],  # parameter reference
+            [],
             ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
             PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
         ],
@@ -465,7 +465,7 @@ def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_sess
     step1 = CustomStep(
         name="MyStep1",
         input_data=[
-            [],  # parameter reference
+            [],
             ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
             PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
         ],
@@ -585,7 +585,7 @@ def test_immutable_pipeline_display(build_visual_dag, sagemaker_session_mock):
         step_statuses={},
     )
 
-
+    
 def test_pipeline_start(sagemaker_session_mock):
     sagemaker_session_mock.sagemaker_client.start_pipeline_execution.return_value = {
         "PipelineExecutionArn": "my:arn"

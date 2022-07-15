@@ -1156,15 +1156,7 @@ def test_load_method(sagemaker_session, role, pipeline_name, region_name):
         )
         assert len(json.loads(pipeline.describe()["PipelineDefinition"])["Steps"]) == 1
 
-        pipeline.parameters = [ParameterInteger(name="InstanceCount", default_value=1)]
-        response = pipeline.upsert(role)
-        update_arn = response["PipelineArn"]
-        assert re.match(
-            rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name}",
-            update_arn,
-        )
-
-        loaded_pipeline = load(update_arn)
+        loaded_pipeline = load(create_arn)
         assert pipeline.name == loaded_pipeline.name
         assert pipeline.parameters == loaded_pipeline.parameters
         assert len(loaded_pipeline.steps) == 0

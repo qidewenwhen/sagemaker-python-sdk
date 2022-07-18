@@ -335,6 +335,39 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
                 )
         return response
 
+    def get_last_execution(self, successful: bool = False, pipeline_arn: str = None):
+        """Retrieve the last execution of a specified execution status
+
+        Args:
+            successful (bool): Desired status of the last execution retrieved
+            pipeline_arn (str): Pipeline arn of a desired pipeline execution
+
+        Returns:
+            _PipelineExecution object
+        """
+
+        if pipeline_arn is None:
+            pipeline = self.sagemaker_session.sagemaker_client.describe_pipeline(
+                PipelineName=self.name
+            )
+            pipeline_arn = pipeline["PipelineArn"]
+
+        search_expression = {"Filters": []}
+        search_expression["Filters"].append(
+            {"Name": "PipelineArn", "Operator": "Equals", "Value": pipeline_arn}
+        )
+
+        if successful:
+            search_expression["Filters"].append(
+                {"Name": "PipelineExecutionStatus", "Operator": "Equals", "Value": "Succeeded"}
+            )
+
+        search_args = {"Resource": "PipelineExecution", "SearchExpression": search_expression}
+
+        search_response = self.sagemaker_session.sagemaker_client.search(**search_args)
+        execution_arn = search_response["Results"][0]["PipelineExecution"]["PipelineExecutionArn"]
+        return _PipelineExecution(arn=execution_arn, pipeline=self)
+
     def delete(self) -> Dict[str, Any]:
         """Deletes a Pipeline in the Workflow service.
 

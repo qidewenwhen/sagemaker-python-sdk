@@ -459,6 +459,59 @@ def test_sdk_pipeline_display(build_visual_dag, sagemaker_session_mock):
     )
 
 
+def test_get_last_execution(sagemaker_session_mock):
+    step1 = CustomStep(
+        name="MyStep1",
+        input_data=[
+            [],
+            ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
+            PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
+        ],
+    )
+    step2 = CustomStep(
+        name="MyStep2", input_data=[step1.properties.ModelArtifacts.S3ModelArtifacts]
+    )  # step property
+
+    pipeline = Pipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[step1, step2],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    sagemaker_session_mock.sagemaker_client.describe_pipeline.return_value = {
+        "PipelineArn": "pipeline-arn"
+    }
+
+    sagemaker_session_mock.sagemaker_client.search.return_value = {
+        "Results": [
+            {
+                "PipelineExecution": {
+                    "PipelineArn": "pipeline-arn",
+                    "PipelineExecutionArn": "pipeline-execution",
+                    "PipelineExecutionStatus": "Succeeded",
+                    "LastModifiedTime": datetime(2022, 7, 12, 17, 52, 19, 433000, tzinfo=tzlocal()),
+                }
+            },
+            {
+                "PipelineExecution": {
+                    "PipelineArn": "pipeline-arn2",
+                    "PipelineExecutionArn": "pipeline-execution2",
+                    "PipelineExecutionStatus": "Failed",
+                    "LastModifiedTime": datetime(2022, 7, 12, 17, 52, 20, 433000, tzinfo=tzlocal()),
+                }
+            },
+        ]
+    }
+    output = pipeline.get_last_execution()
+
+    expected = _PipelineExecution(arn="pipeline-execution", pipeline=pipeline)
+
+    assert output.arn == expected.arn
+    assert output.pipeline == expected.pipeline
+    assert isinstance(output, _PipelineExecution)
+
+
 @patch("sagemaker.workflow.pipeline.build_visual_dag")
 @patch.object(_PipelineExecution, "list_steps")
 def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_session_mock):

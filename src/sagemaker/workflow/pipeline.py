@@ -579,7 +579,7 @@ class ImmutablePipeline(Pipeline):
         """Prints out a Directed Acyclic Graph visual of the Pipeline
 
         Args:
-        pipeline_arn (str): The pipeline arn for the desired pipeline to display.
+            pipeline_arn (str): The pipeline arn for the desired pipeline to display.
 
         Returns:
             A Graphviz object representing the pipeline, if successful.

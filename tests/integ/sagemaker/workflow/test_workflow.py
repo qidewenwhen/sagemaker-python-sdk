@@ -1220,11 +1220,11 @@ def test_get_last_execution(sagemaker_session, role, pipeline_name, region_name)
 
         assert output.arn == execution_fail.arn
         assert output.pipeline == pipeline
-        assert execution_fail.describe()["PipelineExecutionStatus"] == "Failed"
+        assert output.describe()["PipelineExecutionStatus"] == "Failed"
 
         assert output_successful.arn == execution_success.arn
         assert output_successful.pipeline == pipeline
-        assert execution_success.describe()["PipelineExecutionStatus"] == "Succeeded"
+        assert output_successful.describe()["PipelineExecutionStatus"] == "Succeeded"
 
     finally:
         try:

@@ -1205,15 +1205,20 @@ def test_get_last_execution(sagemaker_session, role, pipeline_name, region_name)
                 "MyInt": 1,
             }
         )
-        execution_success.wait()
+        try:
+            execution_success.wait(delay=30, max_attempts=60)
+        except WaiterError:
+            pass
 
         execution_fail = pipeline.start(
             parameters={
                 "MyInt": 3,
             }
         )
-
-        time.sleep(10)
+        try:
+            execution_fail.wait(delay=30, max_attempts=60)
+        except WaiterError:
+            pass
 
         output = pipeline.get_last_execution()
         output_successful = pipeline.get_last_execution(successful=True)

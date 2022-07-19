@@ -45,9 +45,9 @@ def equal_adjacency_list_with_edges(output, expected):
 
     for i in range(len(output)):
         assert output[i]["StepName"] == expected[i]["StepName"]
-        output_outBoundEdges = sorted(output[i]["OutBoundEdges"], key=lambda x: x["nextStepName"])
+        output_outBoundEdges = sorted(output[i]["OutBoundEdges"], key=lambda x: x["NextStepName"])
         expected_outBoundEdges = sorted(
-            expected[i]["OutBoundEdges"], key=lambda x: x["nextStepName"]
+            expected[i]["OutBoundEdges"], key=lambda x: x["NextStepName"]
         )
         assert len(output_outBoundEdges) == len(expected_outBoundEdges)
         for j in range(len(output_outBoundEdges)):

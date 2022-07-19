@@ -111,8 +111,11 @@ def build_visual_dag(
         status = step_statuses[parent] if parent in step_statuses else "Not Executed"
         G.node(parent, color=STEP_COLORS[status], style="filled")
         for child in step["OutBoundEdges"]:
-            child_name = child["nextStepName"]
-            edge = child["edgeLabel"]
+            child_name = child["NextStepName"]
+            if "EdgeLabel" not in child or child["EdgeLabel"] is None:
+                edge = None
+            else:
+                edge = child["EdgeLabel"]
             G.edge(parent, child_name, label=edge)
 
     return G
@@ -588,14 +591,10 @@ class ImmutablePipeline(Pipeline):
             pipeline = self.sagemaker_session.sagemaker_client.describe_pipeline(
                 PipelineName=self.name
             )
-            pipelineArn = pipeline["PipelineArn"]
-            response = self.sagemaker_session.sagemaker_client.describe_pipeline_graph(
-                PipelineArn=pipelineArn
-            )
-        else:
-            response = self.sagemaker_session.sagemaker_client.describe_pipeline_graph(
-                PipelineArn=pipeline_arn
-            )
+            pipeline_arn = pipeline["PipelineArn"]
+        response = self.sagemaker_session.sagemaker_client.describe_pipeline_graph(
+            PipelineArn=pipeline_arn
+        )
         adjacencyList = response["AdjacencyList"]
         stepStatuses = {}
 
@@ -871,13 +870,13 @@ class PipelineGraph:
 
             out_bound_edges = []
             for child_step in old_adjacency_list[step]:
-                out_bound_edge = {"nextStepName": child_step}
+                out_bound_edge = {"NextStepName": child_step}
                 if step in if_edges and child_step in if_edges[step]:
-                    out_bound_edge["edgeLabel"] = "True"
+                    out_bound_edge["EdgeLabel"] = "True"
                 elif step in else_edges and child_step in else_edges[step]:
-                    out_bound_edge["edgeLabel"] = "False"
+                    out_bound_edge["EdgeLabel"] = "False"
                 else:
-                    out_bound_edge["edgeLabel"] = None
+                    out_bound_edge["EdgeLabel"] = None
                 out_bound_edges.append(out_bound_edge)
 
             adjacency_list_step["StepName"] = step

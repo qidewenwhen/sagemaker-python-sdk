@@ -23,6 +23,7 @@ import pytest
 from botocore.exceptions import WaiterError
 import pandas as pd
 
+from sagemaker.workflow.fail_step import FailStep
 from sagemaker.workflow.model_step import ModelStep, _REGISTER_MODEL_NAME_BASE
 from sagemaker.parameter import IntegerParameter
 from sagemaker.pytorch import PyTorch, PyTorchModel
@@ -49,6 +50,7 @@ from sagemaker.sklearn.processing import SKLearnProcessor
 from sagemaker.workflow.conditions import (
     ConditionGreaterThanOrEqualTo,
     ConditionLessThanOrEqualTo,
+    ConditionEquals,
 )
 from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.callback_step import (
@@ -1161,6 +1163,73 @@ def test_load_method(sagemaker_session, role, pipeline_name, region_name):
         assert pipeline.parameters == loaded_pipeline.parameters
         assert len(loaded_pipeline.steps) == 0
         assert isinstance(loaded_pipeline, ImmutablePipeline)
+
+    finally:
+        try:
+            pipeline.delete()
+        except Exception:
+            pass
+
+
+def test_get_last_execution(sagemaker_session, role, pipeline_name, region_name):
+    param = ParameterInteger(name="MyInt")
+    cond = ConditionEquals(left=param, right=1)
+    step_fail = FailStep(
+        name="FailStep",
+        error_message="Failed due to hitting in else branch",
+    )
+    step_cond = ConditionStep(
+        name="CondStep",
+        conditions=[cond],
+        if_steps=[],
+        else_steps=[step_fail],
+    )
+    pipeline = Pipeline(
+        name=pipeline_name,
+        steps=[step_cond],
+        sagemaker_session=sagemaker_session,
+        parameters=[param],
+    )
+
+    try:
+        response = pipeline.create(role)
+        create_arn = response["PipelineArn"]
+        assert re.match(
+            rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name}",
+            create_arn,
+        )
+        assert len(json.loads(pipeline.describe()["PipelineDefinition"])["Steps"]) == 1
+
+        execution_success = pipeline.start(
+            parameters={
+                "MyInt": 1,
+            }
+        )
+        try:
+            execution_success.wait(delay=30, max_attempts=60)
+        except WaiterError:
+            pass
+
+        execution_fail = pipeline.start(
+            parameters={
+                "MyInt": 3,
+            }
+        )
+        try:
+            execution_fail.wait(delay=30, max_attempts=60)
+        except WaiterError:
+            pass
+
+        output = pipeline.get_last_execution()
+        output_successful = pipeline.get_last_execution(successful=True)
+
+        assert output.arn == execution_fail.arn
+        assert output.pipeline == pipeline
+        assert output.describe()["PipelineExecutionStatus"] == "Failed"
+
+        assert output_successful.arn == execution_success.arn
+        assert output_successful.pipeline == pipeline
+        assert output_successful.describe()["PipelineExecutionStatus"] == "Succeeded"
 
     finally:
         try:

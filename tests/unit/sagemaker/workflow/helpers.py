@@ -16,11 +16,7 @@ from __future__ import absolute_import
 from sagemaker.workflow.properties import Properties
 from sagemaker.workflow.steps import Step, StepTypeEnum
 from sagemaker.workflow.step_collections import StepCollection
-from sagemaker.workflow.pipeline import (
-    _STEP_NAME,
-    _OUT_BOUND_EDGES,
-    _NEXT_STEP_NAME
-)
+from sagemaker.workflow.pipeline import _STEP_NAME, _OUT_BOUND_EDGES, _NEXT_STEP_NAME
 
 
 def ordered(obj):

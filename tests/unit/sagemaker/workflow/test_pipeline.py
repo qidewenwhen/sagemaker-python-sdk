@@ -291,11 +291,11 @@ def test_pipeline_build_adjacency_list_with_condition_edges_without_condition_st
     expected = [
         {
             "StepName": "MyStep1",
-            "OutBoundEdges": [{"nextStepName": "MyStep2", "edgeLabel": None}],
+            "OutBoundEdges": [{"NextStepName": "MyStep2", "EdgeLabel": None}],
         },
         {
             "StepName": "MyStep2",
-            "OutBoundEdges": [{"nextStepName": "MyStep3", "edgeLabel": None}],
+            "OutBoundEdges": [{"NextStepName": "MyStep3", "EdgeLabel": None}],
         },
         {"StepName": "MyStep3", "OutBoundEdges": []},
     ]
@@ -335,15 +335,15 @@ def test_pipeline_build_adjacency_list_with_condition_edges_with_condition_step(
         {
             "StepName": "ConditionStep",
             "OutBoundEdges": [
-                {"nextStepName": "ElseStep2", "edgeLabel": "False"},
-                {"nextStepName": "ElseStep1", "edgeLabel": "False"},
-                {"nextStepName": "IfStep2", "edgeLabel": "True"},
-                {"nextStepName": "IfStep1", "edgeLabel": "True"},
+                {"NextStepName": "ElseStep2", "EdgeLabel": "False"},
+                {"NextStepName": "ElseStep1", "EdgeLabel": "False"},
+                {"NextStepName": "IfStep2", "EdgeLabel": "True"},
+                {"NextStepName": "IfStep1", "EdgeLabel": "True"},
             ],
         },
         {
             "StepName": "ElseStep2",
-            "OutBoundEdges": [{"nextStepName": "NormalStep", "edgeLabel": None}],
+            "OutBoundEdges": [{"NextStepName": "NormalStep", "EdgeLabel": None}],
         },
         {"StepName": "IfStep1", "OutBoundEdges": []},
         {"StepName": "IfStep2", "OutBoundEdges": []},
@@ -392,12 +392,12 @@ def test_pipeline_build_adjacency_list_with_condition_edges_with_step_collection
         {
             "StepName": "ConditionStep",
             "OutBoundEdges": [
-                {"nextStepName": "MyStep1", "edgeLabel": "True"},
+                {"NextStepName": "MyStep1", "EdgeLabel": "True"},
             ],
         },
         {
             "StepName": "MyStep1",
-            "OutBoundEdges": [{"nextStepName": "MyStep2", "edgeLabel": None}],
+            "OutBoundEdges": [{"NextStepName": "MyStep2", "EdgeLabel": None}],
         },
         {"StepName": "MyStep2", "OutBoundEdges": []},
     ]
@@ -437,15 +437,15 @@ def test_sdk_pipeline_display(build_visual_dag, sagemaker_session_mock):
         {
             "StepName": "ConditionStep",
             "OutBoundEdges": [
-                {"nextStepName": "ElseStep2", "edgeLabel": "False"},
-                {"nextStepName": "ElseStep1", "edgeLabel": "False"},
-                {"nextStepName": "IfStep2", "edgeLabel": "True"},
-                {"nextStepName": "IfStep1", "edgeLabel": "True"},
+                {"NextStepName": "ElseStep2", "EdgeLabel": "False"},
+                {"NextStepName": "ElseStep1", "EdgeLabel": "False"},
+                {"NextStepName": "IfStep2", "EdgeLabel": "True"},
+                {"NextStepName": "IfStep1", "EdgeLabel": "True"},
             ],
         },
         {
             "StepName": "ElseStep2",
-            "OutBoundEdges": [{"nextStepName": "NormalStep", "edgeLabel": None}],
+            "OutBoundEdges": [{"NextStepName": "NormalStep", "EdgeLabel": None}],
         },
         {"StepName": "IfStep1", "OutBoundEdges": []},
         {"StepName": "IfStep2", "OutBoundEdges": []},
@@ -457,6 +457,59 @@ def test_sdk_pipeline_display(build_visual_dag, sagemaker_session_mock):
     build_visual_dag.assert_called_with(
         pipeline_name="MyPipeline", adjacency_list=actual_adj_list, step_statuses={}
     )
+
+
+def test_get_last_execution(sagemaker_session_mock):
+    step1 = CustomStep(
+        name="MyStep1",
+        input_data=[
+            [],
+            ExecutionVariables.PIPELINE_EXECUTION_ID,  # execution variable
+            PipelineExperimentConfigProperties.EXPERIMENT_NAME,  # experiment config property
+        ],
+    )
+    step2 = CustomStep(
+        name="MyStep2", input_data=[step1.properties.ModelArtifacts.S3ModelArtifacts]
+    )  # step property
+
+    pipeline = Pipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[step1, step2],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    sagemaker_session_mock.sagemaker_client.describe_pipeline.return_value = {
+        "PipelineArn": "pipeline-arn"
+    }
+
+    sagemaker_session_mock.sagemaker_client.search.return_value = {
+        "Results": [
+            {
+                "PipelineExecution": {
+                    "PipelineArn": "pipeline-arn",
+                    "PipelineExecutionArn": "pipeline-execution",
+                    "PipelineExecutionStatus": "Succeeded",
+                    "LastModifiedTime": datetime(2022, 7, 12, 17, 52, 19, 433000, tzinfo=tzlocal()),
+                }
+            },
+            {
+                "PipelineExecution": {
+                    "PipelineArn": "pipeline-arn2",
+                    "PipelineExecutionArn": "pipeline-execution2",
+                    "PipelineExecutionStatus": "Failed",
+                    "LastModifiedTime": datetime(2022, 7, 12, 17, 52, 20, 433000, tzinfo=tzlocal()),
+                }
+            },
+        ]
+    }
+    output = pipeline.get_last_execution()
+
+    expected = _PipelineExecution(arn="pipeline-execution", pipeline=pipeline)
+
+    assert output.arn == expected.arn
+    assert output.pipeline == expected.pipeline
+    assert isinstance(output, _PipelineExecution)
 
 
 @patch("sagemaker.workflow.pipeline.build_visual_dag")
@@ -515,11 +568,11 @@ def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_sess
     expected = [
         {
             "StepName": "MyStep1",
-            "OutBoundEdges": [{"nextStepName": "MyStep2", "edgeLabel": None}],
+            "OutBoundEdges": [{"NextStepName": "MyStep2", "EdgeLabel": None}],
         },
         {
             "StepName": "MyStep2",
-            "OutBoundEdges": [{"nextStepName": "MyStep3", "edgeLabel": None}],
+            "OutBoundEdges": [{"NextStepName": "MyStep3", "EdgeLabel": None}],
         },
         {"StepName": "MyStep3", "OutBoundEdges": []},
     ]
@@ -544,11 +597,11 @@ def test_immutable_pipeline_display(build_visual_dag, sagemaker_session_mock):
         "AdjacencyList": [
             {
                 "StepName": "MyStep1",
-                "OutBoundEdges": [{"nextStepName": "MyStep2", "edgeLabel": None}],
+                "OutBoundEdges": [{"NextStepName": "MyStep2"}],
             },
             {
                 "StepName": "MyStep2",
-                "OutBoundEdges": [{"nextStepName": "MyStep3", "edgeLabel": None}],
+                "OutBoundEdges": [{"NextStepName": "MyStep3"}],
             },
             {"StepName": "MyStep3", "OutBoundEdges": []},
         ],

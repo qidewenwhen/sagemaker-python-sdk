@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from sagemaker.workflow.properties import Properties
 from sagemaker.workflow.steps import Step, StepTypeEnum
 from sagemaker.workflow.step_collections import StepCollection
+from sagemaker.workflow.pipeline import _STEP_NAME, _OUT_BOUND_EDGES, _NEXT_STEP_NAME
 
 
 def ordered(obj):
@@ -40,14 +41,14 @@ def ordered(obj):
 def equal_adjacency_list_with_edges(output, expected):
     assert len(output) == len(expected)
 
-    sorted(output, key=lambda x: x["StepName"])
-    sorted(expected, key=lambda x: x["StepName"])
+    sorted(output, key=lambda x: x[_STEP_NAME])
+    sorted(expected, key=lambda x: x[_STEP_NAME])
 
     for i in range(len(output)):
-        assert output[i]["StepName"] == expected[i]["StepName"]
-        output_outBoundEdges = sorted(output[i]["OutBoundEdges"], key=lambda x: x["nextStepName"])
+        assert output[i][_STEP_NAME] == expected[i][_STEP_NAME]
+        output_outBoundEdges = sorted(output[i][_OUT_BOUND_EDGES], key=lambda x: x[_NEXT_STEP_NAME])
         expected_outBoundEdges = sorted(
-            expected[i]["OutBoundEdges"], key=lambda x: x["nextStepName"]
+            expected[i][_OUT_BOUND_EDGES], key=lambda x: x[_NEXT_STEP_NAME]
         )
         assert len(output_outBoundEdges) == len(expected_outBoundEdges)
         for j in range(len(output_outBoundEdges)):

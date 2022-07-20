@@ -51,6 +51,11 @@ from sagemaker.workflow.utilities import list_to_request
 STEP_COLORS = {"Succeeded": "green", "Failed": "red", "Executing": "blue", "Not Executed": "grey"}
 PARAMETER_TYPE = {"String": ParameterString, "Integer": ParameterInteger, "Float": ParameterFloat}
 
+_NEXT_STEP_NAME = "NextStepName"
+_EDGE_LABEL = "EdgeLabel"
+_STEP_NAME = "StepName"
+_OUT_BOUND_EDGES = "OutBoundEdges"
+
 
 def load(pipeline_name: str, sagemaker_session: Session = Session()):
     """Loads an existing pipeline based on the pipeline name and returns a Pipeline object
@@ -107,12 +112,12 @@ def build_visual_dag(
     G = graphviz.Digraph(pipeline_name, strict=True)
 
     for step in adjacency_list:
-        parent = step["StepName"]
+        parent = step[_STEP_NAME]
         status = step_statuses[parent] if parent in step_statuses else "Not Executed"
         G.node(parent, color=STEP_COLORS[status], style="filled")
-        for child in step["OutBoundEdges"]:
-            child_name = child["nextStepName"]
-            edge = child["edgeLabel"]
+        for child in step[_OUT_BOUND_EDGES]:
+            child_name = child[_NEXT_STEP_NAME]
+            edge = child.get(_EDGE_LABEL, None)
             G.edge(parent, child_name, label=edge)
 
     return G
@@ -335,6 +340,39 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
                 )
         return response
 
+    def get_last_execution(self, successful: bool = False, pipeline_arn: str = None):
+        """Retrieve the last execution of a specified execution status
+
+        Args:
+            successful (bool): Desired status of the last execution retrieved
+            pipeline_arn (str): Pipeline arn of a desired pipeline execution
+
+        Returns:
+            _PipelineExecution object
+        """
+
+        if pipeline_arn is None:
+            pipeline = self.sagemaker_session.sagemaker_client.describe_pipeline(
+                PipelineName=self.name
+            )
+            pipeline_arn = pipeline["PipelineArn"]
+
+        search_expression = {"Filters": []}
+        search_expression["Filters"].append(
+            {"Name": "PipelineArn", "Operator": "Equals", "Value": pipeline_arn}
+        )
+
+        if successful:
+            search_expression["Filters"].append(
+                {"Name": "PipelineExecutionStatus", "Operator": "Equals", "Value": "Succeeded"}
+            )
+
+        search_args = {"Resource": "PipelineExecution", "SearchExpression": search_expression}
+
+        search_response = self.sagemaker_session.sagemaker_client.search(**search_args)
+        execution_arn = search_response["Results"][0]["PipelineExecution"]["PipelineExecutionArn"]
+        return _PipelineExecution(arn=execution_arn, pipeline=self)
+
     def delete(self) -> Dict[str, Any]:
         """Deletes a Pipeline in the Workflow service.
 
@@ -546,7 +584,7 @@ class ImmutablePipeline(Pipeline):
         """Prints out a Directed Acyclic Graph visual of the Pipeline
 
         Args:
-        pipeline_arn (str): The pipeline arn for the desired pipeline to display.
+            pipeline_arn (str): The pipeline arn for the desired pipeline to display.
 
         Returns:
             A Graphviz object representing the pipeline, if successful.
@@ -555,14 +593,10 @@ class ImmutablePipeline(Pipeline):
             pipeline = self.sagemaker_session.sagemaker_client.describe_pipeline(
                 PipelineName=self.name
             )
-            pipelineArn = pipeline["PipelineArn"]
-            response = self.sagemaker_session.sagemaker_client.describe_pipeline_graph(
-                PipelineArn=pipelineArn
-            )
-        else:
-            response = self.sagemaker_session.sagemaker_client.describe_pipeline_graph(
-                PipelineArn=pipeline_arn
-            )
+            pipeline_arn = pipeline["PipelineArn"]
+        response = self.sagemaker_session.sagemaker_client.describe_pipeline_graph(
+            PipelineArn=pipeline_arn
+        )
         adjacencyList = response["AdjacencyList"]
         stepStatuses = {}
 
@@ -662,7 +696,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
         step_statuses = {}
         execution_steps = self.list_steps()
         for step in execution_steps:
-            step_statuses[step["StepName"]] = step["StepStatus"]
+            step_statuses[step[_STEP_NAME]] = step["StepStatus"]
 
         return build_visual_dag(
             pipeline_name=self.pipeline.name,
@@ -838,17 +872,17 @@ class PipelineGraph:
 
             out_bound_edges = []
             for child_step in old_adjacency_list[step]:
-                out_bound_edge = {"nextStepName": child_step}
+                out_bound_edge = {_NEXT_STEP_NAME: child_step}
                 if step in if_edges and child_step in if_edges[step]:
-                    out_bound_edge["edgeLabel"] = "True"
+                    out_bound_edge[_EDGE_LABEL] = "True"
                 elif step in else_edges and child_step in else_edges[step]:
-                    out_bound_edge["edgeLabel"] = "False"
+                    out_bound_edge[_EDGE_LABEL] = "False"
                 else:
-                    out_bound_edge["edgeLabel"] = None
+                    out_bound_edge[_EDGE_LABEL] = None
                 out_bound_edges.append(out_bound_edge)
 
-            adjacency_list_step["StepName"] = step
-            adjacency_list_step["OutBoundEdges"] = out_bound_edges
+            adjacency_list_step[_STEP_NAME] = step
+            adjacency_list_step[_OUT_BOUND_EDGES] = out_bound_edges
             adjacency_list.append(adjacency_list_step)
         return adjacency_list
 

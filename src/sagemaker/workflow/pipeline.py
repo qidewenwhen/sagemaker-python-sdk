@@ -51,6 +51,11 @@ from sagemaker.workflow.utilities import list_to_request
 STEP_COLORS = {"Succeeded": "green", "Failed": "red", "Executing": "blue", "Not Executed": "grey"}
 PARAMETER_TYPE = {"String": ParameterString, "Integer": ParameterInteger, "Float": ParameterFloat}
 
+_NEXT_STEP_NAME = "NextStepName"
+_EDGE_LABEL = "EdgeLabel"
+_STEP_NAME = "StepName"
+_OUT_BOUND_EDGES = "OutBoundEdges"
+
 
 def load(pipeline_name: str, sagemaker_session: Session = Session()):
     """Loads an existing pipeline based on the pipeline name and returns a Pipeline object
@@ -107,15 +112,12 @@ def build_visual_dag(
     G = graphviz.Digraph(pipeline_name, strict=True)
 
     for step in adjacency_list:
-        parent = step["StepName"]
+        parent = step[_STEP_NAME]
         status = step_statuses[parent] if parent in step_statuses else "Not Executed"
         G.node(parent, color=STEP_COLORS[status], style="filled")
-        for child in step["OutBoundEdges"]:
-            child_name = child["NextStepName"]
-            if "EdgeLabel" not in child or child["EdgeLabel"] is None:
-                edge = None
-            else:
-                edge = child["EdgeLabel"]
+        for child in step[_OUT_BOUND_EDGES]:
+            child_name = child[_NEXT_STEP_NAME]
+            edge = child.get(_EDGE_LABEL, None)
             G.edge(parent, child_name, label=edge)
 
     return G
@@ -694,7 +696,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
         step_statuses = {}
         execution_steps = self.list_steps()
         for step in execution_steps:
-            step_statuses[step["StepName"]] = step["StepStatus"]
+            step_statuses[step[_STEP_NAME]] = step["StepStatus"]
 
         return build_visual_dag(
             pipeline_name=self.pipeline.name,
@@ -870,17 +872,17 @@ class PipelineGraph:
 
             out_bound_edges = []
             for child_step in old_adjacency_list[step]:
-                out_bound_edge = {"NextStepName": child_step}
+                out_bound_edge = {_NEXT_STEP_NAME: child_step}
                 if step in if_edges and child_step in if_edges[step]:
-                    out_bound_edge["EdgeLabel"] = "True"
+                    out_bound_edge[_EDGE_LABEL] = "True"
                 elif step in else_edges and child_step in else_edges[step]:
-                    out_bound_edge["EdgeLabel"] = "False"
+                    out_bound_edge[_EDGE_LABEL] = "False"
                 else:
-                    out_bound_edge["EdgeLabel"] = None
+                    out_bound_edge[_EDGE_LABEL] = None
                 out_bound_edges.append(out_bound_edge)
 
-            adjacency_list_step["StepName"] = step
-            adjacency_list_step["OutBoundEdges"] = out_bound_edges
+            adjacency_list_step[_STEP_NAME] = step
+            adjacency_list_step[_OUT_BOUND_EDGES] = out_bound_edges
             adjacency_list.append(adjacency_list_step)
         return adjacency_list
 

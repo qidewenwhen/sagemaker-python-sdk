@@ -280,7 +280,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
 
         pipelineGraph = PipelineGraph.from_pipeline(self)
         adjacencyList = pipelineGraph.adjacency_list_with_edge_labels
-        edges = generate_display_edges(pipelineGraph.adjacency_list)
+        edges = generate_display_edges(adjacencyList)
         stepStatuses = {}
 
         return build_visual_dag(
@@ -618,8 +618,7 @@ class ImmutablePipeline(Pipeline):
             PipelineArn=pipeline_arn
         )
         adjacencyList = response["AdjacencyList"]
-        pipelineGraph = PipelineGraph.from_pipeline(self)
-        edges = generate_display_edges(pipelineGraph.adjacency_list)
+        edges = generate_display_edges(adjacencyList)
         stepStatuses = {}
 
         return build_visual_dag(
@@ -720,7 +719,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
 
         step_statuses = {}
         execution_steps = self.list_steps()
-        edges = generate_display_edges(pipelineGraph.adjacency_list)
+        edges = generate_display_edges(adjacencyList)
         for step in execution_steps:
             step_statuses[step[_STEP_NAME]] = step["StepStatus"]
 

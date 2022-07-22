@@ -199,7 +199,7 @@ def override_pipeline_parameter_var(func):
     return wrapper
 
 
-def generate_display_edges(adjacency_list: Dict[str, List[str]]) -> Set:
+def generate_display_edges(adjacency_list: List[Dict[str, any]]) -> Set:
     """Returns all edges to be displayed in a pipeline visualization
 
     Deletes redundant edges through transitive reduction
@@ -211,12 +211,14 @@ def generate_display_edges(adjacency_list: Dict[str, List[str]]) -> Set:
         Set of tuple edges
 
     """
-    nodes = adjacency_list.keys()
+    nodes = []
     edges = set()
-    for node in nodes:
-        out_bound_edges = adjacency_list[node]
+    for node in adjacency_list:
+        node_name = node["StepName"]
+        nodes.append(node_name)
+        out_bound_edges = node["OutBoundEdges"]
         for edge in out_bound_edges:
-            edges.add((node, edge))
+            edges.add((node_name, edge["NextStepName"]))
 
     for node1 in nodes:
         for node2 in nodes:

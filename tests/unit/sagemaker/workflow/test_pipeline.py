@@ -406,7 +406,7 @@ def test_pipeline_build_adjacency_list_with_condition_edges_with_step_collection
 
 
 @patch("sagemaker.workflow.pipeline.build_visual_dag")
-def test_sdk_pipeline_display(build_visual_dag, sagemaker_session_mock):
+def test_sdk_pipeline_display_with_redundant_edge(build_visual_dag, sagemaker_session_mock):
     ifStep1 = CustomStep("IfStep1")
     ifStep2 = CustomStep("IfStep2")
     elseStep1 = CustomStep("ElseStep1")
@@ -418,14 +418,14 @@ def test_sdk_pipeline_display(build_visual_dag, sagemaker_session_mock):
     conditionStep = ConditionStep(
         name="ConditionStep",
         conditions=[],
-        if_steps=[ifStep1, ifStep2],
+        if_steps=[ifStep1, ifStep2, normalStep1],
         else_steps=[elseStep1, elseStep2],
     )
 
     pipeline = Pipeline(
         name="MyPipeline",
         parameters=[],
-        steps=[conditionStep, normalStep1],
+        steps=[conditionStep],
         sagemaker_session=sagemaker_session_mock,
     )
 
@@ -441,6 +441,7 @@ def test_sdk_pipeline_display(build_visual_dag, sagemaker_session_mock):
                 {"NextStepName": "ElseStep1", "EdgeLabel": "False"},
                 {"NextStepName": "IfStep2", "EdgeLabel": "True"},
                 {"NextStepName": "IfStep1", "EdgeLabel": "True"},
+                {"NextStepName": "NormalStep", "EdgeLabel": "True"},
             ],
         },
         {
@@ -453,9 +454,22 @@ def test_sdk_pipeline_display(build_visual_dag, sagemaker_session_mock):
         {"StepName": "NormalStep", "OutBoundEdges": []},
     ]
 
+    edges = set(
+        [
+            ("ConditionStep", "ElseStep2"),
+            ("ConditionStep", "ElseStep1"),
+            ("ConditionStep", "IfStep2"),
+            ("ConditionStep", "IfStep1"),
+            ("ElseStep2", "NormalStep"),
+        ]
+    )
+
     equal_adjacency_list_with_edges(actual_adj_list, expected)
     build_visual_dag.assert_called_with(
-        pipeline_name="MyPipeline", adjacency_list=actual_adj_list, step_statuses={}
+        pipeline_name="MyPipeline",
+        adjacency_list=actual_adj_list,
+        step_statuses={},
+        display_edges=edges,
     )
 
 
@@ -577,9 +591,14 @@ def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_sess
         {"StepName": "MyStep3", "OutBoundEdges": []},
     ]
 
+    edges = set([("MyStep1", "MyStep2"), ("MyStep2", "MyStep3")])
+
     equal_adjacency_list_with_edges(actual_adj_list, expected)
     build_visual_dag.assert_called_with(
-        pipeline_name="MyPipeline", adjacency_list=actual_adj_list, step_statuses=step_statuses
+        pipeline_name="MyPipeline",
+        adjacency_list=actual_adj_list,
+        step_statuses=step_statuses,
+        display_edges=edges,
     )
 
 
@@ -614,12 +633,15 @@ def test_immutable_pipeline_display(build_visual_dag, sagemaker_session_mock):
         describeGraphResponse
     )
 
+    edges = set([("MyStep1", "MyStep2"), ("MyStep2", "MyStep3")])
+
     pipeline.display()
 
     build_visual_dag.assert_called_with(
         pipeline_name="MyPipeline",
         adjacency_list=describeGraphResponse["AdjacencyList"],
         step_statuses={},
+        display_edges=edges,
     )
 
 

@@ -17,7 +17,7 @@ import inspect
 import logging
 from functools import wraps
 from pathlib import Path
-from typing import List, Sequence, Union, Set, TYPE_CHECKING
+from typing import List, Sequence, Union, Set, TYPE_CHECKING, Dict
 import hashlib
 from urllib.parse import unquote, urlparse
 from _hashlib import HASH as Hash
@@ -197,3 +197,40 @@ def override_pipeline_parameter_var(func):
         return func(*args, **kwargs)
 
     return wrapper
+
+
+def generate_display_edges(adjacency_list: List[Dict[str, any]]) -> Set:
+    """Returns all edges to be displayed in a pipeline visualization
+
+    Deletes redundant edges through transitive reduction
+
+    Args:
+        adjacency_list (Dict[str, List[str]]): Adjacency list that represents the pipeline graph
+
+    Returns:
+        Set of tuple edges
+
+    """
+    nodes = []
+    edges = set()
+    for node in adjacency_list:
+        node_name = node["StepName"]
+        nodes.append(node_name)
+        out_bound_edges = node["OutBoundEdges"]
+        for edge in out_bound_edges:
+            edges.add((node_name, edge["NextStepName"]))
+
+    for node1 in nodes:
+        for node2 in nodes:
+            if node1 == node2:
+                continue
+            for node3 in nodes:
+                if node1 != node3 and node2 != node3:
+                    if (
+                        (node1, node2) in edges
+                        and (node2, node3) in edges
+                        and (node1, node3) in edges
+                    ):
+                        edges.remove((node1, node3))
+
+    return edges

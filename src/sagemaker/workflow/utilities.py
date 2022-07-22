@@ -199,8 +199,8 @@ def override_pipeline_parameter_var(func):
     return wrapper
 
 
-def valid_edges(adjacency_list: Dict[str, List[str]]) -> Set:
-    """Returns all valid edges to be used in a pipeline visualization
+def generate_display_edges(adjacency_list: Dict[str, List[str]]) -> Set:
+    """Returns all edges to be displayed in a pipeline visualization
 
     Deletes redundant edges through transitive reduction
 
@@ -208,7 +208,7 @@ def valid_edges(adjacency_list: Dict[str, List[str]]) -> Set:
         adjacency_list (Dict[str, List[str]]): Adjacency list that represents the pipeline graph
 
     Returns:
-        Set of valid edges
+        Set of tuple edges
 
     """
     nodes = adjacency_list.keys()
@@ -218,11 +218,17 @@ def valid_edges(adjacency_list: Dict[str, List[str]]) -> Set:
         for edge in out_bound_edges:
             edges.add((node, edge))
 
-    for a in nodes:
-        for b in nodes:
-            for c in nodes:
-                if (a, b) != (b, c) and (a, b) != (a, c):
-                    if (a, b) in edges and (b, c) in edges and (a, c) in edges:
-                        edges.remove((a, c))
+    for node1 in nodes:
+        for node2 in nodes:
+            if node1 == node2:
+                continue
+            for node3 in nodes:
+                if node1 != node3 and node2 != node3:
+                    if (
+                        (node1, node2) in edges
+                        and (node2, node3) in edges
+                        and (node1, node3) in edges
+                    ):
+                        edges.remove((node1, node3))
 
     return edges

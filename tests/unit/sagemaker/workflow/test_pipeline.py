@@ -466,7 +466,10 @@ def test_sdk_pipeline_display_with_redundant_edge(build_visual_dag, sagemaker_se
 
     equal_adjacency_list_with_edges(actual_adj_list, expected)
     build_visual_dag.assert_called_with(
-        pipeline_name="MyPipeline", adjacency_list=actual_adj_list, step_statuses={}, edges=edges
+        pipeline_name="MyPipeline",
+        adjacency_list=actual_adj_list,
+        step_statuses={},
+        display_edges=edges,
     )
 
 
@@ -595,7 +598,7 @@ def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_sess
         pipeline_name="MyPipeline",
         adjacency_list=actual_adj_list,
         step_statuses=step_statuses,
-        edges=edges,
+        display_edges=edges,
     )
 
 
@@ -638,7 +641,7 @@ def test_immutable_pipeline_display(build_visual_dag, sagemaker_session_mock):
         pipeline_name="MyPipeline",
         adjacency_list=describeGraphResponse["AdjacencyList"],
         step_statuses={},
-        edges=edges,
+        display_edges=edges,
     )
 
 

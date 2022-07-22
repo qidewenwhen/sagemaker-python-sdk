@@ -46,7 +46,7 @@ from sagemaker.workflow.properties import Properties
 from sagemaker.workflow.steps import Step
 from sagemaker.workflow.step_collections import StepCollection
 from sagemaker.workflow.condition_step import ConditionStep
-from sagemaker.workflow.utilities import list_to_request, valid_edges
+from sagemaker.workflow.utilities import list_to_request, generate_display_edges
 
 STEP_COLORS = {
     "Succeeded": "green",
@@ -98,7 +98,7 @@ def load(pipeline_name: str, sagemaker_session: Session = Session()):
 def build_visual_dag(
     pipeline_name: str,
     adjacency_list: List[Dict[str, any]],
-    edges: Set,
+    display_edges: Set,
     step_statuses: Dict[str, str],
 ):
     """Builds a Graphviz object that visualizes a pipeline/execution
@@ -106,7 +106,7 @@ def build_visual_dag(
     Args:
         pipeline_name (str): pipeline name for the visualized pipeline
         adjacency_list (List[Dict[str, any]]): adjacency list for the visualized pipeline
-        edges (set): valid edges to be created in visualized pipeline
+        display_edges (set): edges to be displayed in the visualized pipeline
         step_statuses (Dict[str, str]): step statuses of the steps in an execution
 
     Returns:
@@ -132,7 +132,7 @@ def build_visual_dag(
         G.node(parent, color=STEP_COLORS[status], style="filled")
         for child in step[_OUT_BOUND_EDGES]:
             child_name = child[_NEXT_STEP_NAME]
-            if (parent, child_name) in edges:
+            if (parent, child_name) in display_edges:
                 edge = child.get(_EDGE_LABEL, None)
                 G.edge(parent, child_name, label=edge)
 
@@ -280,14 +280,14 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
 
         pipelineGraph = PipelineGraph.from_pipeline(self)
         adjacencyList = pipelineGraph.adjacency_list_with_edge_labels
-        edges = valid_edges(pipelineGraph.adjacency_list)
+        edges = generate_display_edges(pipelineGraph.adjacency_list)
         stepStatuses = {}
 
         return build_visual_dag(
             pipeline_name=self.name,
             adjacency_list=adjacencyList,
             step_statuses=stepStatuses,
-            edges=edges,
+            display_edges=edges,
         )
 
     def update(
@@ -619,14 +619,14 @@ class ImmutablePipeline(Pipeline):
         )
         adjacencyList = response["AdjacencyList"]
         pipelineGraph = PipelineGraph.from_pipeline(self)
-        edges = valid_edges(pipelineGraph.adjacency_list)
+        edges = generate_display_edges(pipelineGraph.adjacency_list)
         stepStatuses = {}
 
         return build_visual_dag(
             pipeline_name=self.name,
             adjacency_list=adjacencyList,
             step_statuses=stepStatuses,
-            edges=edges,
+            display_edges=edges,
         )
 
     def update(
@@ -720,7 +720,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
 
         step_statuses = {}
         execution_steps = self.list_steps()
-        edges = valid_edges(pipelineGraph.adjacency_list)
+        edges = generate_display_edges(pipelineGraph.adjacency_list)
         for step in execution_steps:
             step_statuses[step[_STEP_NAME]] = step["StepStatus"]
 
@@ -728,7 +728,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
             pipeline_name=self.pipeline.name,
             adjacency_list=adjacencyList,
             step_statuses=step_statuses,
-            edges=edges,
+            display_edges=edges,
         )
 
     def list_steps(self):

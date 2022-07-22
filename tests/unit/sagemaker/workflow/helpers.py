@@ -41,8 +41,8 @@ def ordered(obj):
 def equal_adjacency_list_with_edges(output, expected):
     assert len(output) == len(expected)
 
-    sorted(output, key=lambda x: x[_STEP_NAME])
-    sorted(expected, key=lambda x: x[_STEP_NAME])
+    output = sorted(output, key=lambda x: x["StepName"])
+    expected = sorted(expected, key=lambda x: x["StepName"])
 
     for i in range(len(output)):
         assert output[i][_STEP_NAME] == expected[i][_STEP_NAME]

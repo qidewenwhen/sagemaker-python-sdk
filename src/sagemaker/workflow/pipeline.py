@@ -55,6 +55,7 @@ STEP_COLORS = {
     "Not Executed": "grey",
     "Stopped": "purple",
     "Stopping": "purple",
+    "Starting": "royalblue",
 }
 PARAMETER_TYPE = {"String": ParameterString, "Integer": ParameterInteger, "Float": ParameterFloat}
 
@@ -714,8 +715,18 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
             A Graphviz object representing the execution, if Successful
         """
 
-        pipelineGraph = PipelineGraph.from_pipeline(self.pipeline)
-        adjacencyList = pipelineGraph.adjacency_list_with_edge_labels
+        if isinstance(self.pipeline, ImmutablePipeline):
+            pipeline = self.sagemaker_session.sagemaker_client.describe_pipeline(
+                PipelineName=self.pipeline.name
+            )
+            pipeline_arn = pipeline["PipelineArn"]
+            response = self.sagemaker_session.sagemaker_client.describe_pipeline_graph(
+                PipelineArn=pipeline_arn
+            )
+            adjacencyList = response["AdjacencyList"]
+        else:
+            pipelineGraph = PipelineGraph.from_pipeline(self.pipeline)
+            adjacencyList = pipelineGraph.adjacency_list_with_edge_labels
 
         step_statuses = {}
         execution_steps = self.list_steps()

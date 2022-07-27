@@ -645,6 +645,72 @@ def test_immutable_pipeline_display(build_visual_dag, sagemaker_session_mock):
     )
 
 
+@patch("sagemaker.workflow.pipeline.build_visual_dag")
+@patch.object(_PipelineExecution, "list_steps")
+def test_immutable_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_session_mock):
+    pipeline = ImmutablePipeline(
+        name="MyPipeline",
+        parameters=[],
+        steps=[],
+        sagemaker_session=sagemaker_session_mock,
+    )
+
+    execution = _PipelineExecution(
+        arn="arn", sagemaker_session=pipeline.sagemaker_session, pipeline=pipeline
+    )
+
+    describeGraphResponse = {
+        "PipelineName": "MyPipeline",
+        "AdjacencyList": [
+            {
+                "StepName": "MyStep1",
+                "OutBoundEdges": [{"NextStepName": "MyStep2"}],
+            },
+            {
+                "StepName": "MyStep2",
+                "OutBoundEdges": [{"NextStepName": "MyStep3"}],
+            },
+            {"StepName": "MyStep3", "OutBoundEdges": []},
+        ],
+    }
+
+    sagemaker_session_mock.sagemaker_client.describe_pipeline.return_value = {
+        "PipelineArn": "pipeline-arn"
+    }
+    sagemaker_session_mock.sagemaker_client.describe_pipeline_graph.return_value = (
+        describeGraphResponse
+    )
+
+    list_steps.return_value = [
+        {
+            "StepName": "MyStep1",
+            "StartTime": datetime(2022, 7, 12, 17, 52, 19, 433000, tzinfo=tzlocal()),
+            "StepStatus": "Succeeded",
+            "AttemptCount": 0,
+            "Metadata": {},
+        },
+        {
+            "StepName": "MyStep2",
+            "StartTime": datetime(2022, 7, 12, 17, 52, 20, 433000, tzinfo=tzlocal()),
+            "StepStatus": "Failed",
+            "AttemptCount": 0,
+            "Metadata": {},
+        },
+    ]
+
+    execution.display()
+
+    edges = set([("MyStep1", "MyStep2"), ("MyStep2", "MyStep3")])
+    step_statuses = {"MyStep1": "Succeeded", "MyStep2": "Failed"}
+
+    build_visual_dag.assert_called_with(
+        pipeline_name="MyPipeline",
+        adjacency_list=describeGraphResponse["AdjacencyList"],
+        step_statuses=step_statuses,
+        display_edges=edges,
+    )
+
+
 def test_pipeline_start(sagemaker_session_mock):
     sagemaker_session_mock.sagemaker_client.start_pipeline_execution.return_value = {
         "PipelineExecutionArn": "my:arn"

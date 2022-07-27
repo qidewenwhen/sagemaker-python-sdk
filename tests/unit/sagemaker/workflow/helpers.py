@@ -55,6 +55,11 @@ def equal_adjacency_list_with_edges(output, expected):
             assert output_outBoundEdges[j] == expected_outBoundEdges[j]
 
 
+def equal_pipeline_executions(output, expected):
+    assert output.arn == expected.arn
+    assert output.pipeline == expected.pipeline
+
+
 class CustomStep(Step):
     def __init__(self, name, input_data=None, display_name=None, description=None, depends_on=None):
         self.input_data = input_data

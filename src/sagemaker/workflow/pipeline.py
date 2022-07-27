@@ -55,6 +55,7 @@ STEP_COLORS = {
     "Not Executed": "grey",
     "Stopped": "purple",
     "Stopping": "purple",
+    "Starting": "royalblue"
 }
 PARAMETER_TYPE = {"String": ParameterString, "Integer": ParameterInteger, "Float": ParameterFloat}
 
@@ -88,11 +89,43 @@ def load(pipeline_name: str, sagemaker_session: Session = Session()):
     for parameter in pipelineDefinition["Parameters"]:
         parameters.append(
             PARAMETER_TYPE[parameter["Type"]](
-                name=parameter["Name"], default_value=parameter["DefaultValue"]
+                name=parameter["Name"], default_value=parameter.get("DefaultValue", None)
             )
         )
 
     return ImmutablePipeline(name=pipelineEntity["PipelineName"], parameters=parameters, steps=[])
+
+
+def list_pipelines(sagemaker_session: Session = Session(), next_token: str = None):
+    """Lists all the existing pipelines
+
+    Args:
+        sagemaker_session (sagemaker.session.Session): Session object that manages interactions
+            with Amazon SageMaker APIs and any other AWS services needed. If not specified, the
+            pipeline creates one using the default AWS configuration chain.
+        next_token (str): If the result of the previous call was truncated, a token that can be used to retrieve
+            the next set of pipelines
+
+    Returns:
+        List of ImmutablePipeline objects
+    """
+    if next_token is None:
+        response = sagemaker_session.sagemaker_client.list_pipelines()
+    else:
+        response = sagemaker_session.sagemaker_client.list_pipelines(NextToken=next_token)
+    listResponse = {}
+    pipelineList = []
+    pipelineSummaries = response["PipelineSummaries"]
+    nextToken = response.get("NextToken", None)
+
+    for pipelineSummary in pipelineSummaries:
+        pipelineList.append(load(pipelineSummary["PipelineName"]))
+
+    listResponse["PipelineList"] = pipelineList
+    if nextToken is not None:
+        listResponse["NextToken"] = nextToken
+
+    return listResponse
 
 
 def build_visual_dag(
@@ -392,6 +425,45 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
         search_response = self.sagemaker_session.sagemaker_client.search(**search_args)
         execution_arn = search_response["Results"][0]["PipelineExecution"]["PipelineExecutionArn"]
         return _PipelineExecution(arn=execution_arn, pipeline=self)
+
+    def list_executions(self, next_token: str = None):
+        """Returns a list of executions done by the current pipeline
+
+        Args:
+            next_token (str): If the result of the previous call was truncated, a token that can be used to retrieve
+                the next set of pipeline executions
+
+        Returns:
+            List of _PipelineExecution objects
+
+        """
+        if next_token is None:
+            response = self.sagemaker_session.sagemaker_client.list_pipeline_executions(
+                PipelineName=self.name
+            )
+        else:
+            response = self.sagemaker_session.sagemaker_client.list_pipeline_executions(
+                PipelineName=self.name, NextToken=next_token
+            )
+        listResponse = {}
+        pipelineExecutionList = []
+        pipelineExecutionSummaries = response["PipelineExecutionSummaries"]
+        nextToken = response.get("NextToken", None)
+
+        for pipelineExecutionSummary in pipelineExecutionSummaries:
+            pipelineExecutionList.append(
+                _PipelineExecution(
+                    arn=pipelineExecutionSummary["PipelineExecutionArn"],
+                    sagemaker_session=self.sagemaker_session,
+                    pipeline=self,
+                )
+            )
+
+        listResponse["PipelineExecutionList"] = pipelineExecutionList
+        if nextToken is not None:
+            listResponse["NextToken"] = nextToken
+
+        return listResponse
 
     def delete(self) -> Dict[str, Any]:
         """Deletes a Pipeline in the Workflow service.

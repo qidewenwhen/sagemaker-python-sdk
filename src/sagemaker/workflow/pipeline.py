@@ -55,7 +55,7 @@ STEP_COLORS = {
     "Not Executed": "grey",
     "Stopped": "purple",
     "Stopping": "purple",
-    "Starting": "green",
+    "Starting": "royalblue",
 }
 PARAMETER_TYPE = {"String": ParameterString, "Integer": ParameterInteger, "Float": ParameterFloat}
 

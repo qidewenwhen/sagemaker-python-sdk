@@ -28,6 +28,10 @@ from sagemaker.workflow.model_step import ModelStep, _REGISTER_MODEL_NAME_BASE
 from sagemaker.parameter import IntegerParameter
 from sagemaker.pytorch import PyTorch, PyTorchModel
 from sagemaker.tuner import HyperparameterTuner
+from tests.integ.sagemaker.workflow.helpers import (
+    assert_pipeline_executions,
+    assert_immutable_pipelines,
+)
 from tests.integ.timeout import timeout
 
 from sagemaker.session import Session
@@ -87,7 +91,6 @@ from sagemaker.feature_store.feature_group import (
     FeatureTypeEnum,
 )
 from tests.integ import DATA_DIR
-from tests.unit.sagemaker.workflow.helpers import equal_pipeline_executions
 
 
 def ordered(obj):
@@ -1226,27 +1229,27 @@ def test_get_last_execution_and_list_executions(
         output = pipeline.get_last_execution()
         output_successful = pipeline.get_last_execution(successful=True)
         list_response = pipeline.list_executions()
-        output_list = list_response["PipelineExecutionList"]
+        output_list = list_response.pipeline_execution_list
 
-        equal_pipeline_executions(output, execution_fail)
+        assert_pipeline_executions(output, execution_fail)
         assert output.describe()["PipelineExecutionStatus"] == "Failed"
 
-        equal_pipeline_executions(output_successful, execution_success)
+        assert_pipeline_executions(output_successful, execution_success)
         assert output_successful.describe()["PipelineExecutionStatus"] == "Succeeded"
 
-        equal_pipeline_executions(output_list[0], execution_fail)
+        assert_pipeline_executions(output_list[0], execution_fail)
         assert output_list[0].describe()["PipelineExecutionStatus"] == "Failed"
-        equal_pipeline_executions(output_list[1], output_successful)
+        assert_pipeline_executions(output_list[1], output_successful)
         assert output_list[1].describe()["PipelineExecutionStatus"] == "Succeeded"
-        assert "NextToken" not in list_response
+        assert list_response.next_token is None
 
     finally:
         try:
             pipeline.delete()
         except Exception:
             pass
-            
-            
+
+
 def test_list_pipelines_method(sagemaker_session, role, pipeline_name, region_name):
     instance_count = ParameterInteger(name="InstanceCount", default_value=2)
     outputParam = CallbackOutput(output_name="output", output_type=CallbackOutputTypeEnum.String)
@@ -1255,12 +1258,31 @@ def test_list_pipelines_method(sagemaker_session, role, pipeline_name, region_na
         CallbackStep(
             name="callback-step",
             sqs_queue_url="https://sqs.us-east-2.amazonaws.com/123456789012/MyQueue",
-            inputs={"arg1": "foo"},
+            inputs={"arg1": "foo1"},
             outputs=[outputParam],
         )
     ]
-    pipeline1 = Pipeline(
+    pipeline = Pipeline(
         name=pipeline_name,
+        parameters=[instance_count],
+        steps=callback_steps,
+        sagemaker_session=sagemaker_session,
+    )
+
+    instance_count = ParameterInteger(name="InstanceCount", default_value=2)
+    outputParam = CallbackOutput(output_name="output", output_type=CallbackOutputTypeEnum.String)
+
+    callback_steps = [
+        CallbackStep(
+            name="callback-step2",
+            sqs_queue_url="https://sqs.us-east-2.amazonaws.com/123456789012/MyQueue",
+            inputs={"arg1": "foo2"},
+            outputs=[outputParam],
+        )
+    ]
+    pipeline_name2 = pipeline_name + "2"
+    pipeline2 = Pipeline(
+        name=pipeline_name2,
         parameters=[instance_count],
         steps=callback_steps,
         sagemaker_session=sagemaker_session,
@@ -1279,22 +1301,22 @@ def test_list_pipelines_method(sagemaker_session, role, pipeline_name, region_na
         else_steps=[step_fail],
     )
 
-    pipeline_name2 = pipeline_name + "2"
-    pipeline2 = Pipeline(
-        name=pipeline_name2,
+    pipeline_name3 = pipeline_name + "3"
+    pipeline3 = Pipeline(
+        name=pipeline_name3,
         steps=[step_cond],
         sagemaker_session=sagemaker_session,
         parameters=[param],
     )
 
     try:
-        response = pipeline1.create(role)
+        response = pipeline.create(role)
         create_arn = response["PipelineArn"]
         assert re.match(
             rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name}",
             create_arn,
         )
-        assert len(json.loads(pipeline1.describe()["PipelineDefinition"])["Steps"]) == 1
+        assert len(json.loads(pipeline.describe()["PipelineDefinition"])["Steps"]) == 1
 
         response = pipeline2.create(role)
         create_arn = response["PipelineArn"]
@@ -1302,26 +1324,32 @@ def test_list_pipelines_method(sagemaker_session, role, pipeline_name, region_na
             rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name2}",
             create_arn,
         )
-        assert len(json.loads(pipeline1.describe()["PipelineDefinition"])["Steps"]) == 1
+        assert len(json.loads(pipeline2.describe()["PipelineDefinition"])["Steps"]) == 1
 
-        list_response = list_pipelines()
-        pipeline_list = list_response["PipelineList"]
+        response = pipeline3.create(role)
+        create_arn = response["PipelineArn"]
+        assert re.match(
+            rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name3}",
+            create_arn,
+        )
+        assert len(json.loads(pipeline3.describe()["PipelineDefinition"])["Steps"]) == 1
 
-        assert "NextToken" not in list_response
+        list_response = list_pipelines(max_results=2)
+        pipeline_list = list_response.pipeline_list
+        assert list_response.next_token is not None
 
-        assert pipeline_list[0].name == pipeline2.name
-        assert pipeline_list[0].parameters == pipeline2.parameters
-        assert len(pipeline_list[0].steps) == 0
-        assert isinstance(pipeline_list[0], ImmutablePipeline)
+        assert_immutable_pipelines(pipeline_list[0], pipeline3)
+        assert_immutable_pipelines(pipeline_list[1], pipeline2)
 
-        assert pipeline_list[1].name == pipeline1.name
-        assert pipeline_list[1].parameters == pipeline1.parameters
-        assert len(pipeline_list[1].steps) == 0
-        assert isinstance(pipeline_list[1], ImmutablePipeline)
+        list_response2 = list_pipelines(next_token=list_response.next_token, max_results=2)
+        pipeline_list2 = list_response2.pipeline_list
+
+        assert_immutable_pipelines(pipeline_list2[0], pipeline)
 
     finally:
         try:
-            pipeline1.delete()
+            pipeline.delete()
             pipeline2.delete()
+            pipeline3.delete()
         except Exception:
             pass

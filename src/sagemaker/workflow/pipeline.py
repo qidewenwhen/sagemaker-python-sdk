@@ -96,7 +96,9 @@ def load(pipeline_name: str, sagemaker_session: Session = Session()):
     return ImmutablePipeline(name=pipelineEntity["PipelineName"], parameters=parameters, steps=[])
 
 
-def list_pipelines(sagemaker_session: Session = Session(), next_token: str = None):
+def list_pipelines(
+    sagemaker_session: Session = Session(), max_results: int = 100, next_token: str = None
+):
     """Lists all the existing pipelines
 
     Args:
@@ -110,10 +112,11 @@ def list_pipelines(sagemaker_session: Session = Session(), next_token: str = Non
         List of ImmutablePipeline objects
     """
     if next_token is None:
-        response = sagemaker_session.sagemaker_client.list_pipelines()
+        response = sagemaker_session.sagemaker_client.list_pipelines(MaxResults=max_results)
     else:
-        response = sagemaker_session.sagemaker_client.list_pipelines(NextToken=next_token)
-    listResponse = {}
+        response = sagemaker_session.sagemaker_client.list_pipelines(
+            NextToken=next_token, MaxResults=max_results
+        )
     pipelineList = []
     pipelineSummaries = response["PipelineSummaries"]
     nextToken = response.get("NextToken", None)
@@ -121,11 +124,7 @@ def list_pipelines(sagemaker_session: Session = Session(), next_token: str = Non
     for pipelineSummary in pipelineSummaries:
         pipelineList.append(load(pipelineSummary["PipelineName"]))
 
-    listResponse["PipelineList"] = pipelineList
-    if nextToken is not None:
-        listResponse["NextToken"] = nextToken
-
-    return listResponse
+    return PipelineList(pipeline_list=pipelineList, next_token=nextToken)
 
 
 def build_visual_dag(
@@ -426,7 +425,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
         execution_arn = search_response["Results"][0]["PipelineExecution"]["PipelineExecutionArn"]
         return _PipelineExecution(arn=execution_arn, pipeline=self)
 
-    def list_executions(self, next_token: str = None):
+    def list_executions(self, next_token: str = None, max_results: int = 100):
         """Returns a list of executions done by the current pipeline
 
         Args:
@@ -439,13 +438,12 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
         """
         if next_token is None:
             response = self.sagemaker_session.sagemaker_client.list_pipeline_executions(
-                PipelineName=self.name
+                PipelineName=self.name, MaxResults=max_results
             )
         else:
             response = self.sagemaker_session.sagemaker_client.list_pipeline_executions(
-                PipelineName=self.name, NextToken=next_token
+                PipelineName=self.name, NextToken=next_token, MaxResults=max_results
             )
-        listResponse = {}
         pipelineExecutionList = []
         pipelineExecutionSummaries = response["PipelineExecutionSummaries"]
         nextToken = response.get("NextToken", None)
@@ -459,11 +457,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
                 )
             )
 
-        listResponse["PipelineExecutionList"] = pipelineExecutionList
-        if nextToken is not None:
-            listResponse["NextToken"] = nextToken
-
-        return listResponse
+        return ExecutionList(pipeline_execution_list=pipelineExecutionList, next_token=nextToken)
 
     def delete(self) -> Dict[str, Any]:
         """Deletes a Pipeline in the Workflow service.
@@ -745,6 +739,20 @@ class ImmutablePipeline(Pipeline):
 
 
 @attr.s
+class PipelineList:
+    """PipelineList class to encapsulate a list of Pipeline objects
+
+    Attributes:
+        pipeline_list (List[Pipeline]): A list of Pipeline objects
+        next_token (str): If the result of the previous call was truncated, a token that can be used to retrieve
+            the next set of Pipeline objects
+    """
+
+    pipeline_list: Sequence[Pipeline] = attr.ib(factory=list)
+    next_token: str = attr.ib(default=None)
+
+
+@attr.s
 class _PipelineExecution:
     """Internal class for encapsulating pipeline execution instances.
 
@@ -866,6 +874,20 @@ sagemaker.html#SageMaker.Client.list_pipeline_execution_steps>`_.
             waiter_id, model, self.sagemaker_session.sagemaker_client
         )
         waiter.wait(PipelineExecutionArn=self.arn)
+
+
+@attr.s
+class ExecutionList:
+    """ExecutionList class to encapsulate a list of _PipelineExecution objects
+
+    Attributes:
+        pipeline_execution_list (List[_PipelineExecution]): A list of _PipelineExecution objects
+        next_token (str): If the result of the previous call was truncated, a token that can be used to retrieve
+            the next set of _PipelineExecution objects
+    """
+
+    pipeline_execution_list: Sequence[_PipelineExecution] = attr.ib(factory=list)
+    next_token: str = attr.ib(default=None)
 
 
 class PipelineGraph:

@@ -38,7 +38,7 @@ def ordered(obj):
         return obj
 
 
-def equal_adjacency_list_with_edges(output, expected):
+def assert_adjacency_list_with_edges(output, expected):
     assert len(output) == len(expected)
 
     output = sorted(output, key=lambda x: x["StepName"])
@@ -53,11 +53,6 @@ def equal_adjacency_list_with_edges(output, expected):
         assert len(output_outBoundEdges) == len(expected_outBoundEdges)
         for j in range(len(output_outBoundEdges)):
             assert output_outBoundEdges[j] == expected_outBoundEdges[j]
-
-
-def equal_pipeline_executions(output, expected):
-    assert output.arn == expected.arn
-    assert output.pipeline == expected.pipeline
 
 
 class CustomStep(Step):

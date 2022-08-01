@@ -40,7 +40,7 @@ from sagemaker.workflow.step_collections import StepCollection
 from tests.unit.sagemaker.workflow.helpers import (
     ordered,
     CustomStep,
-    equal_adjacency_list_with_edges,
+    assert_adjacency_list_with_edges,
 )
 
 
@@ -300,7 +300,7 @@ def test_pipeline_build_adjacency_list_with_condition_edges_without_condition_st
         {"StepName": "MyStep3", "OutBoundEdges": []},
     ]
 
-    equal_adjacency_list_with_edges(output, expected)
+    assert_adjacency_list_with_edges(output, expected)
 
 
 def test_pipeline_build_adjacency_list_with_condition_edges_with_condition_step(
@@ -351,7 +351,7 @@ def test_pipeline_build_adjacency_list_with_condition_edges_with_condition_step(
         {"StepName": "NormalStep", "OutBoundEdges": []},
     ]
 
-    equal_adjacency_list_with_edges(output, expected)
+    assert_adjacency_list_with_edges(output, expected)
 
 
 def test_pipeline_build_adjacency_list_with_condition_edges_with_step_collection(
@@ -402,7 +402,7 @@ def test_pipeline_build_adjacency_list_with_condition_edges_with_step_collection
         {"StepName": "MyStep2", "OutBoundEdges": []},
     ]
 
-    equal_adjacency_list_with_edges(output, expected)
+    assert_adjacency_list_with_edges(output, expected)
 
 
 @patch("sagemaker.workflow.pipeline.build_visual_dag")
@@ -464,7 +464,7 @@ def test_sdk_pipeline_display_with_redundant_edge(build_visual_dag, sagemaker_se
         ]
     )
 
-    equal_adjacency_list_with_edges(actual_adj_list, expected)
+    assert_adjacency_list_with_edges(actual_adj_list, expected)
     build_visual_dag.assert_called_with(
         pipeline_name="MyPipeline",
         adjacency_list=actual_adj_list,
@@ -593,7 +593,7 @@ def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_sess
 
     edges = set([("MyStep1", "MyStep2"), ("MyStep2", "MyStep3")])
 
-    equal_adjacency_list_with_edges(actual_adj_list, expected)
+    assert_adjacency_list_with_edges(actual_adj_list, expected)
     build_visual_dag.assert_called_with(
         pipeline_name="MyPipeline",
         adjacency_list=actual_adj_list,

@@ -38,7 +38,7 @@ def ordered(obj):
         return obj
 
 
-def equal_adjacency_list_with_edges(output, expected):
+def assert_adjacency_list_with_edges(output, expected):
     assert len(output) == len(expected)
 
     output = sorted(output, key=lambda x: x["StepName"])

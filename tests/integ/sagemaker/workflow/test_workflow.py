@@ -28,6 +28,10 @@ from sagemaker.workflow.model_step import ModelStep, _REGISTER_MODEL_NAME_BASE
 from sagemaker.parameter import IntegerParameter
 from sagemaker.pytorch import PyTorch, PyTorchModel
 from sagemaker.tuner import HyperparameterTuner
+from tests.integ.sagemaker.workflow.helpers import (
+    assert_pipeline_executions,
+    assert_immutable_pipelines,
+)
 from tests.integ.timeout import timeout
 
 from sagemaker.session import Session
@@ -80,7 +84,7 @@ from sagemaker.workflow.steps import (
     TuningStep,
 )
 from sagemaker.workflow.step_collections import RegisterModel
-from sagemaker.workflow.pipeline import Pipeline, load, ImmutablePipeline
+from sagemaker.workflow.pipeline import Pipeline, load, ImmutablePipeline, list_pipelines
 from sagemaker.feature_store.feature_group import (
     FeatureGroup,
     FeatureDefinition,
@@ -1171,7 +1175,9 @@ def test_load_method(sagemaker_session, role, pipeline_name, region_name):
             pass
 
 
-def test_get_last_execution(sagemaker_session, role, pipeline_name, region_name):
+def test_get_last_execution_and_list_executions(
+    sagemaker_session, role, pipeline_name, region_name
+):
     param = ParameterInteger(name="MyInt")
     cond = ConditionEquals(left=param, right=1)
     step_fail = FailStep(
@@ -1222,17 +1228,128 @@ def test_get_last_execution(sagemaker_session, role, pipeline_name, region_name)
 
         output = pipeline.get_last_execution()
         output_successful = pipeline.get_last_execution(successful=True)
+        list_response = pipeline.list_executions()
+        output_list = list_response.pipeline_executions
 
-        assert output.arn == execution_fail.arn
-        assert output.pipeline == pipeline
+        assert_pipeline_executions(output, execution_fail)
         assert output.describe()["PipelineExecutionStatus"] == "Failed"
 
-        assert output_successful.arn == execution_success.arn
-        assert output_successful.pipeline == pipeline
+        assert_pipeline_executions(output_successful, execution_success)
         assert output_successful.describe()["PipelineExecutionStatus"] == "Succeeded"
+
+        assert_pipeline_executions(output_list[0], execution_fail)
+        assert output_list[0].describe()["PipelineExecutionStatus"] == "Failed"
+        assert_pipeline_executions(output_list[1], output_successful)
+        assert output_list[1].describe()["PipelineExecutionStatus"] == "Succeeded"
+        assert list_response.next_token is None
 
     finally:
         try:
             pipeline.delete()
+        except Exception:
+            pass
+
+
+def test_list_pipelines_method(sagemaker_session, role, pipeline_name, region_name):
+    instance_count = ParameterInteger(name="InstanceCount", default_value=2)
+    outputParam = CallbackOutput(output_name="output", output_type=CallbackOutputTypeEnum.String)
+
+    callback_steps = [
+        CallbackStep(
+            name="callback-step",
+            sqs_queue_url="https://sqs.us-east-2.amazonaws.com/123456789012/MyQueue",
+            inputs={"arg1": "foo1"},
+            outputs=[outputParam],
+        )
+    ]
+    pipeline = Pipeline(
+        name=pipeline_name,
+        parameters=[instance_count],
+        steps=callback_steps,
+        sagemaker_session=sagemaker_session,
+    )
+
+    instance_count = ParameterInteger(name="InstanceCount", default_value=2)
+    outputParam = CallbackOutput(output_name="output", output_type=CallbackOutputTypeEnum.String)
+
+    callback_steps = [
+        CallbackStep(
+            name="callback-step2",
+            sqs_queue_url="https://sqs.us-east-2.amazonaws.com/123456789012/MyQueue",
+            inputs={"arg1": "foo2"},
+            outputs=[outputParam],
+        )
+    ]
+    pipeline_name2 = f"{pipeline_name}2"
+    pipeline2 = Pipeline(
+        name=pipeline_name2,
+        parameters=[instance_count],
+        steps=callback_steps,
+        sagemaker_session=sagemaker_session,
+    )
+
+    param = ParameterInteger(name="MyInt")
+    cond = ConditionEquals(left=param, right=1)
+    step_fail = FailStep(
+        name="FailStep",
+        error_message="Failed due to hitting in else branch",
+    )
+    step_cond = ConditionStep(
+        name="CondStep",
+        conditions=[cond],
+        if_steps=[],
+        else_steps=[step_fail],
+    )
+
+    pipeline_name3 = f"{pipeline_name}3"
+    pipeline3 = Pipeline(
+        name=pipeline_name3,
+        steps=[step_cond],
+        sagemaker_session=sagemaker_session,
+        parameters=[param],
+    )
+
+    try:
+        response = pipeline.create(role)
+        create_arn = response["PipelineArn"]
+        assert re.match(
+            rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name}",
+            create_arn,
+        )
+        assert len(json.loads(pipeline.describe()["PipelineDefinition"])["Steps"]) == 1
+
+        response = pipeline2.create(role)
+        create_arn = response["PipelineArn"]
+        assert re.match(
+            rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name2}",
+            create_arn,
+        )
+        assert len(json.loads(pipeline2.describe()["PipelineDefinition"])["Steps"]) == 1
+
+        response = pipeline3.create(role)
+        create_arn = response["PipelineArn"]
+        assert re.match(
+            rf"arn:aws:sagemaker:{region_name}:\d{{12}}:pipeline/{pipeline_name3}",
+            create_arn,
+        )
+        assert len(json.loads(pipeline3.describe()["PipelineDefinition"])["Steps"]) == 1
+
+        list_response = list_pipelines(max_results=2)
+        pipeline_list = list_response.pipelines
+        assert list_response.next_token is not None
+
+        assert_immutable_pipelines(pipeline_list[0], pipeline3)
+        assert_immutable_pipelines(pipeline_list[1], pipeline2)
+
+        list_response2 = list_pipelines(next_token=list_response.next_token, max_results=2)
+        pipeline_list2 = list_response2.pipelines
+
+        assert_immutable_pipelines(pipeline_list2[0], pipeline)
+
+    finally:
+        try:
+            pipeline.delete()
+            pipeline2.delete()
+            pipeline3.delete()
         except Exception:
             pass

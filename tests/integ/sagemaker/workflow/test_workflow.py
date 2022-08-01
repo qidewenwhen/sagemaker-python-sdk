@@ -1229,7 +1229,7 @@ def test_get_last_execution_and_list_executions(
         output = pipeline.get_last_execution()
         output_successful = pipeline.get_last_execution(successful=True)
         list_response = pipeline.list_executions()
-        output_list = list_response.pipeline_execution_list
+        output_list = list_response.pipeline_executions
 
         assert_pipeline_executions(output, execution_fail)
         assert output.describe()["PipelineExecutionStatus"] == "Failed"
@@ -1280,7 +1280,7 @@ def test_list_pipelines_method(sagemaker_session, role, pipeline_name, region_na
             outputs=[outputParam],
         )
     ]
-    pipeline_name2 = pipeline_name + "2"
+    pipeline_name2 = f"{pipeline_name}2"
     pipeline2 = Pipeline(
         name=pipeline_name2,
         parameters=[instance_count],
@@ -1301,7 +1301,7 @@ def test_list_pipelines_method(sagemaker_session, role, pipeline_name, region_na
         else_steps=[step_fail],
     )
 
-    pipeline_name3 = pipeline_name + "3"
+    pipeline_name3 = f"{pipeline_name}3"
     pipeline3 = Pipeline(
         name=pipeline_name3,
         steps=[step_cond],
@@ -1335,14 +1335,14 @@ def test_list_pipelines_method(sagemaker_session, role, pipeline_name, region_na
         assert len(json.loads(pipeline3.describe()["PipelineDefinition"])["Steps"]) == 1
 
         list_response = list_pipelines(max_results=2)
-        pipeline_list = list_response.pipeline_list
+        pipeline_list = list_response.pipelines
         assert list_response.next_token is not None
 
         assert_immutable_pipelines(pipeline_list[0], pipeline3)
         assert_immutable_pipelines(pipeline_list[1], pipeline2)
 
         list_response2 = list_pipelines(next_token=list_response.next_token, max_results=2)
-        pipeline_list2 = list_response2.pipeline_list
+        pipeline_list2 = list_response2.pipelines
 
         assert_immutable_pipelines(pipeline_list2[0], pipeline)
 

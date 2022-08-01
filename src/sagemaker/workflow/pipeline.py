@@ -124,7 +124,7 @@ def list_pipelines(
     for pipelineSummary in pipelineSummaries:
         pipelineList.append(load(pipelineSummary["PipelineName"]))
 
-    return PipelineList(pipeline_list=pipelineList, next_token=nextToken)
+    return _PipelineList(pipelines=pipelineList, next_token=nextToken)
 
 
 def build_visual_dag(
@@ -457,7 +457,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline>`_
                 )
             )
 
-        return ExecutionList(pipeline_execution_list=pipelineExecutionList, next_token=nextToken)
+        return _ExecutionList(pipeline_executions=pipelineExecutionList, next_token=nextToken)
 
     def delete(self) -> Dict[str, Any]:
         """Deletes a Pipeline in the Workflow service.
@@ -739,16 +739,16 @@ class ImmutablePipeline(Pipeline):
 
 
 @attr.s
-class PipelineList:
+class _PipelineList:
     """PipelineList class to encapsulate a list of Pipeline objects
 
     Attributes:
-        pipeline_list (List[Pipeline]): A list of Pipeline objects
+        pipelines (List[Pipeline]): A list of Pipeline objects
         next_token (str): If the result of the previous call was truncated, a token that can be used to retrieve
             the next set of Pipeline objects
     """
 
-    pipeline_list: Sequence[Pipeline] = attr.ib(factory=list)
+    pipelines: Sequence[Pipeline] = attr.ib(factory=list)
     next_token: str = attr.ib(default=None)
 
 
@@ -877,16 +877,16 @@ sagemaker.html#SageMaker.Client.list_pipeline_execution_steps>`_.
 
 
 @attr.s
-class ExecutionList:
+class _ExecutionList:
     """ExecutionList class to encapsulate a list of _PipelineExecution objects
 
     Attributes:
-        pipeline_execution_list (List[_PipelineExecution]): A list of _PipelineExecution objects
+        pipeline_executions (List[_PipelineExecution]): A list of _PipelineExecution objects
         next_token (str): If the result of the previous call was truncated, a token that can be used to retrieve
             the next set of _PipelineExecution objects
     """
 
-    pipeline_execution_list: Sequence[_PipelineExecution] = attr.ib(factory=list)
+    pipeline_executions: Sequence[_PipelineExecution] = attr.ib(factory=list)
     next_token: str = attr.ib(default=None)
 
 

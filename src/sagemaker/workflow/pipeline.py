@@ -49,13 +49,13 @@ from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.utilities import list_to_request, generate_display_edges
 
 STEP_COLORS = {
-    "Succeeded": "green",
-    "Failed": "red",
-    "Executing": "royalblue",
+    "Succeeded": "lightgreen",
+    "Failed": "lightred",
+    "Executing": "lightblue",
     "Not Executed": "grey",
-    "Stopped": "purple",
-    "Stopping": "purple",
-    "Starting": "royalblue",
+    "Stopped": "#CBC3E3",
+    "Stopping": "#CBC3E3",
+    "Starting": "lightblue",
 }
 PARAMETER_TYPE = {"String": ParameterString, "Integer": ParameterInteger, "Float": ParameterFloat}
 
@@ -808,7 +808,11 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
             adjacencyList = pipelineGraph.adjacency_list_with_edge_labels
 
         step_statuses = {}
-        execution_steps = self.list_steps()
+        list_response = self.sagemaker_session.sagemaker_client.list_pipeline_execution_steps(
+            PipelineExecutionArn=self.arn
+        )
+        execution_steps = list_response["PipelineExecutionSteps"]
+
         edges = generate_display_edges(adjacencyList)
         for step in execution_steps:
             step_statuses[step[_STEP_NAME]] = step["StepStatus"]
@@ -824,15 +828,34 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
         """Describes a pipeline execution's steps.
 
         Returns:
-             Information about the steps of the pipeline execution. See
+             Information about the steps of the pipeline execution in a Pandas table. See
              `boto3 client list_pipeline_execution_steps
              <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/\
 sagemaker.html#SageMaker.Client.list_pipeline_execution_steps>`_.
         """
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError(
+                """
+                Please install the pandas library to use this command.
+                Run 'pip install pandas' and reinvoke command.
+                """
+            )
+
         response = self.sagemaker_session.sagemaker_client.list_pipeline_execution_steps(
             PipelineExecutionArn=self.arn
         )
-        return response["PipelineExecutionSteps"]
+
+        pd.set_option("display.max_colwidth", None)
+        df = pd.DataFrame(response["PipelineExecutionSteps"])
+
+        def color_rows(table, columns):
+            status_color = STEP_COLORS[table.StepStatus]
+            return [f"background-color: {status_color}"] * columns
+
+        df = df.style.apply(color_rows, columns=len(df.columns), axis=1)
+        return df
 
     def wait(self, delay=30, max_attempts=60):
         """Waits for a pipeline execution.

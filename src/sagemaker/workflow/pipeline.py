@@ -23,6 +23,8 @@ import attr
 import botocore
 from botocore.exceptions import ClientError
 
+import pandas as pd
+
 from sagemaker import s3
 from sagemaker._studio import _append_project_tags
 from sagemaker.session import Session
@@ -46,11 +48,15 @@ from sagemaker.workflow.properties import Properties
 from sagemaker.workflow.steps import Step
 from sagemaker.workflow.step_collections import StepCollection
 from sagemaker.workflow.condition_step import ConditionStep
-from sagemaker.workflow.utilities import list_to_request, generate_display_edges
+from sagemaker.workflow.utilities import (
+    list_to_request,
+    generate_display_edges,
+    generate_table_from_list_of_dict
+)
 
 STEP_COLORS = {
     "Succeeded": "lightgreen",
-    "Failed": "lightred",
+    "Failed": "red",
     "Executing": "lightblue",
     "Not Executed": "grey",
     "Stopped": "#CBC3E3",
@@ -117,14 +123,14 @@ def list_pipelines(
         response = sagemaker_session.sagemaker_client.list_pipelines(
             NextToken=next_token, MaxResults=max_results
         )
-    pipelineList = []
+    pipelines = []
     pipelineSummaries = response["PipelineSummaries"]
     nextToken = response.get("NextToken", None)
 
     for pipelineSummary in pipelineSummaries:
-        pipelineList.append(load(pipelineSummary["PipelineName"]))
+        pipelines.append(load(pipelineSummary["PipelineName"]))
 
-    return _PipelineList(pipelines=pipelineList, next_token=nextToken)
+    return _PipelineList(pipelines=pipelines, next_token=nextToken)
 
 
 def build_visual_dag(
@@ -218,6 +224,15 @@ class Pipeline(Entity):
             if self.pipeline_experiment_config is not None
             else None,
             "Steps": list_to_request(self.steps),
+        }
+
+    def to_dict(self) -> Dict[str, any]:
+        return {
+            'Name': self.name,
+            'Parameters': repr(self.parameters),
+            'Steps': repr(self.steps),
+            'Pipeline Experiment Config': repr(self.pipeline_experiment_config),
+            'Sagemaker Session': self.sagemaker_session
         }
 
     def create(
@@ -751,6 +766,25 @@ class _PipelineList:
     pipelines: Sequence[Pipeline] = attr.ib(factory=list)
     next_token: str = attr.ib(default=None)
 
+    def table(self):
+        """Displays the list of Pipeline objects as a Table
+
+        Returns:
+            A table visual of the list of Pipeline objects
+        """
+        input_list = self.pipelines
+        next_token = self.next_token
+
+        pd.set_option("display.max_colwidth", None)
+        df = pd.DataFrame.from_records([each.to_dict() for each in input_list])
+        if next_token is not None:
+            df["NextToken"] = ""
+            df1 = pd.DataFrame([[""] * len(df.columns)], columns=df.columns)
+            df = df.append(df1, ignore_index=True)
+            df.loc[df.index[-1], "NextToken"] = next_token
+
+        return df
+
 
 @attr.s
 class _PipelineExecution:
@@ -767,6 +801,14 @@ class _PipelineExecution:
     arn: str = attr.ib()
     sagemaker_session: Session = attr.ib(factory=Session)
     pipeline: Pipeline = attr.ib(default=None)
+
+    def to_dict(self):
+        pipelineName = self.pipeline.name if self.pipeline is not None else None
+        return {
+            'ExecutionArn': self.arn,
+            "Sagemaker Session": self.sagemaker_session,
+            'Pipeline': pipelineName
+        }
 
     def stop(self):
         """Stops a pipeline execution."""
@@ -828,34 +870,17 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
         """Describes a pipeline execution's steps.
 
         Returns:
-             Information about the steps of the pipeline execution in a Pandas table. See
+             Information about the steps of the pipeline execution in a table. See
              `boto3 client list_pipeline_execution_steps
              <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/\
 sagemaker.html#SageMaker.Client.list_pipeline_execution_steps>`_.
         """
-        try:
-            import pandas as pd
-        except ImportError:
-            raise ImportError(
-                """
-                Please install the pandas library to use this command.
-                Run 'pip install pandas' and reinvoke command.
-                """
-            )
 
         response = self.sagemaker_session.sagemaker_client.list_pipeline_execution_steps(
             PipelineExecutionArn=self.arn
         )
 
-        pd.set_option("display.max_colwidth", None)
-        df = pd.DataFrame(response["PipelineExecutionSteps"])
-
-        def color_rows(table, columns):
-            status_color = STEP_COLORS[table.StepStatus]
-            return [f"background-color: {status_color}"] * columns
-
-        df = df.style.apply(color_rows, columns=len(df.columns), axis=1)
-        return df
+        return generate_table_from_list_of_dict(response["PipelineExecutionSteps"], STEP_COLORS)
 
     def wait(self, delay=30, max_attempts=60):
         """Waits for a pipeline execution.
@@ -911,6 +936,25 @@ class _ExecutionList:
 
     pipeline_executions: Sequence[_PipelineExecution] = attr.ib(factory=list)
     next_token: str = attr.ib(default=None)
+
+    def table(self):
+        """Displays the list of _PipelineExecution objects as a Table
+
+        Returns:
+            A table visual of the list of _PipelineExecution objects
+        """
+        input_list = self.pipeline_executions
+        next_token = self.next_token
+
+        pd.set_option("display.max_colwidth", None)
+        df = pd.DataFrame.from_records([each.to_dict() for each in input_list])
+        if next_token is not None:
+            df["NextToken"] = ""
+            df1 = pd.DataFrame([[""] * len(df.columns)], columns=df.columns)
+            df = df.append(df1, ignore_index=True)
+            df.loc[df.index[-1], "NextToken"] = next_token
+
+        return df
 
 
 class PipelineGraph:

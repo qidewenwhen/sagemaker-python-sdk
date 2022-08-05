@@ -22,6 +22,8 @@ import hashlib
 from urllib.parse import unquote, urlparse
 from _hashlib import HASH as Hash
 
+import pandas as pd
+
 from sagemaker.workflow.parameters import Parameter
 from sagemaker.workflow.pipeline_context import _StepArguments
 from sagemaker.workflow.entities import (
@@ -234,3 +236,24 @@ def generate_display_edges(adjacency_list: List[Dict[str, any]]) -> Set:
                         edges.remove((node1, node3))
 
     return edges
+
+
+def generate_table_from_list_of_dict(input_list: List[Dict[str, any]], STEP_COLORS):
+    """Generates a table view of a list of dictionaries
+
+    Args:
+        input_list (List[Dict[str, any]]): The input list to be converted into a table
+
+    Returns:
+        table of list
+    """
+    pd.set_option("display.max_colwidth", None)
+    df = pd.DataFrame(input_list)
+
+    def color_rows(table, columns):
+        status_color = STEP_COLORS[table.StepStatus]
+        return [f"background-color: {status_color}"] * columns
+
+    df = df.style.apply(color_rows, columns=len(df.columns), axis=1)
+
+    return df

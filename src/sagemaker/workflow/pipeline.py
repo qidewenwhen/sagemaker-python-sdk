@@ -51,7 +51,7 @@ from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.utilities import (
     list_to_request,
     generate_display_edges,
-    generate_table_from_list_of_dict
+    generate_table_from_list_of_dict,
 )
 
 STEP_COLORS = {
@@ -227,12 +227,17 @@ class Pipeline(Entity):
         }
 
     def to_dict(self) -> Dict[str, any]:
+        """Converts Pipeline object into dict
+
+        Returns:
+            A dictionary for the Pipeline object
+        """
         return {
-            'Name': self.name,
-            'Parameters': repr(self.parameters),
-            'Steps': repr(self.steps),
-            'Pipeline Experiment Config': repr(self.pipeline_experiment_config),
-            'Sagemaker Session': self.sagemaker_session
+            "Name": self.name,
+            "Parameters": repr(self.parameters),
+            "Steps": repr(self.steps),
+            "Pipeline Experiment Config": repr(self.pipeline_experiment_config),
+            "Sagemaker Session": self.sagemaker_session,
         }
 
     def create(
@@ -803,11 +808,16 @@ class _PipelineExecution:
     pipeline: Pipeline = attr.ib(default=None)
 
     def to_dict(self):
+        """Converts _PipelineExecution object into dict
+
+        Returns:
+            A dictionary for _PipelineExecution object
+        """
         pipelineName = self.pipeline.name if self.pipeline is not None else None
         return {
-            'ExecutionArn': self.arn,
+            "ExecutionArn": self.arn,
             "Sagemaker Session": self.sagemaker_session,
-            'Pipeline': pipelineName
+            "Pipeline": pipelineName,
         }
 
     def stop(self):

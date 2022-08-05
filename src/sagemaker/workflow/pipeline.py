@@ -123,6 +123,7 @@ def list_pipelines(
         response = sagemaker_session.sagemaker_client.list_pipelines(
             NextToken=next_token, MaxResults=max_results
         )
+        
     pipelines = []
     pipelineSummaries = response["PipelineSummaries"]
     nextToken = response.get("NextToken", None)
@@ -771,6 +772,7 @@ class _PipelineList:
     pipelines: Sequence[Pipeline] = attr.ib(factory=list)
     next_token: str = attr.ib(default=None)
 
+
     def table(self):
         """Displays the list of Pipeline objects as a Table
 
@@ -789,7 +791,7 @@ class _PipelineList:
             df.loc[df.index[-1], "NextToken"] = next_token
 
         return df
-
+        
 
 @attr.s
 class _PipelineExecution:

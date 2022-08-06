@@ -527,8 +527,7 @@ def test_get_last_execution(sagemaker_session_mock):
 
 
 @patch("sagemaker.workflow.pipeline.build_visual_dag")
-@patch.object(_PipelineExecution, "list_steps")
-def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_session_mock):
+def test_pipeline_execution_display(build_visual_dag, sagemaker_session_mock):
     step1 = CustomStep(
         name="MyStep1",
         input_data=[
@@ -556,22 +555,24 @@ def test_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_sess
         arn="arn", sagemaker_session=pipeline.sagemaker_session, pipeline=pipeline
     )
 
-    list_steps.return_value = [
-        {
-            "StepName": "MyStep1",
-            "StartTime": datetime(2022, 7, 12, 17, 52, 19, 433000, tzinfo=tzlocal()),
-            "StepStatus": "Succeeded",
-            "AttemptCount": 0,
-            "Metadata": {},
-        },
-        {
-            "StepName": "MyStep2",
-            "StartTime": datetime(2022, 7, 12, 17, 52, 20, 433000, tzinfo=tzlocal()),
-            "StepStatus": "Failed",
-            "AttemptCount": 0,
-            "Metadata": {},
-        },
-    ]
+    sagemaker_session_mock.sagemaker_client.list_pipeline_execution_steps.return_value = {
+        "PipelineExecutionSteps": [
+            {
+                "StepName": "MyStep1",
+                "StartTime": datetime(2022, 7, 12, 17, 52, 19, 433000, tzinfo=tzlocal()),
+                "StepStatus": "Succeeded",
+                "AttemptCount": 0,
+                "Metadata": {},
+            },
+            {
+                "StepName": "MyStep2",
+                "StartTime": datetime(2022, 7, 12, 17, 52, 20, 433000, tzinfo=tzlocal()),
+                "StepStatus": "Failed",
+                "AttemptCount": 0,
+                "Metadata": {},
+            },
+        ]
+    }
 
     step_statuses = {"MyStep1": "Succeeded", "MyStep2": "Failed"}
 
@@ -646,8 +647,7 @@ def test_immutable_pipeline_display(build_visual_dag, sagemaker_session_mock):
 
 
 @patch("sagemaker.workflow.pipeline.build_visual_dag")
-@patch.object(_PipelineExecution, "list_steps")
-def test_immutable_pipeline_execution_display(list_steps, build_visual_dag, sagemaker_session_mock):
+def test_immutable_pipeline_execution_display(build_visual_dag, sagemaker_session_mock):
     pipeline = ImmutablePipeline(
         name="MyPipeline",
         parameters=[],
@@ -681,22 +681,24 @@ def test_immutable_pipeline_execution_display(list_steps, build_visual_dag, sage
         describeGraphResponse
     )
 
-    list_steps.return_value = [
-        {
-            "StepName": "MyStep1",
-            "StartTime": datetime(2022, 7, 12, 17, 52, 19, 433000, tzinfo=tzlocal()),
-            "StepStatus": "Succeeded",
-            "AttemptCount": 0,
-            "Metadata": {},
-        },
-        {
-            "StepName": "MyStep2",
-            "StartTime": datetime(2022, 7, 12, 17, 52, 20, 433000, tzinfo=tzlocal()),
-            "StepStatus": "Failed",
-            "AttemptCount": 0,
-            "Metadata": {},
-        },
-    ]
+    sagemaker_session_mock.sagemaker_client.list_pipeline_execution_steps.return_value = {
+        "PipelineExecutionSteps": [
+            {
+                "StepName": "MyStep1",
+                "StartTime": datetime(2022, 7, 12, 17, 52, 19, 433000, tzinfo=tzlocal()),
+                "StepStatus": "Succeeded",
+                "AttemptCount": 0,
+                "Metadata": {},
+            },
+            {
+                "StepName": "MyStep2",
+                "StartTime": datetime(2022, 7, 12, 17, 52, 20, 433000, tzinfo=tzlocal()),
+                "StepStatus": "Failed",
+                "AttemptCount": 0,
+                "Metadata": {},
+            },
+        ]
+    }
 
     execution.display()
 
@@ -928,7 +930,7 @@ def test_pipeline_execution_basics(sagemaker_session_mock):
         PipelineExecutionArn="my:arn"
     )
     steps = execution.list_steps()
-    assert sagemaker_session_mock.sagemaker_client.describe_pipeline_execution_steps.called_with(
+    assert sagemaker_session_mock.sagemaker_client.list_pipeline_execution_steps.called_with(
         PipelineExecutionArn="my:arn"
     )
     assert len(steps) == 1

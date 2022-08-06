@@ -23,6 +23,8 @@ import attr
 import botocore
 from botocore.exceptions import ClientError
 
+import pandas as pd
+
 from sagemaker import s3
 from sagemaker._studio import _append_project_tags
 from sagemaker.session import Session
@@ -46,16 +48,20 @@ from sagemaker.workflow.properties import Properties
 from sagemaker.workflow.steps import Step
 from sagemaker.workflow.step_collections import StepCollection
 from sagemaker.workflow.condition_step import ConditionStep
-from sagemaker.workflow.utilities import list_to_request, generate_display_edges
+from sagemaker.workflow.utilities import (
+    list_to_request,
+    generate_display_edges,
+    generate_table_from_list_of_dict,
+)
 
 STEP_COLORS = {
-    "Succeeded": "green",
+    "Succeeded": "lightgreen",
     "Failed": "red",
-    "Executing": "royalblue",
+    "Executing": "lightblue",
     "Not Executed": "grey",
-    "Stopped": "purple",
-    "Stopping": "purple",
-    "Starting": "royalblue",
+    "Stopped": "#CBC3E3",
+    "Stopping": "#CBC3E3",
+    "Starting": "lightblue",
 }
 PARAMETER_TYPE = {"String": ParameterString, "Integer": ParameterInteger, "Float": ParameterFloat}
 
@@ -117,14 +123,15 @@ def list_pipelines(
         response = sagemaker_session.sagemaker_client.list_pipelines(
             NextToken=next_token, MaxResults=max_results
         )
-    pipelineList = []
+        
+    pipelines = []
     pipelineSummaries = response["PipelineSummaries"]
     nextToken = response.get("NextToken", None)
 
     for pipelineSummary in pipelineSummaries:
-        pipelineList.append(load(pipelineSummary["PipelineName"]))
+        pipelines.append(load(pipelineSummary["PipelineName"]))
 
-    return _PipelineList(pipelines=pipelineList, next_token=nextToken)
+    return _PipelineList(pipelines=pipelines, next_token=nextToken)
 
 
 def build_visual_dag(
@@ -218,6 +225,19 @@ class Pipeline(Entity):
             if self.pipeline_experiment_config is not None
             else None,
             "Steps": list_to_request(self.steps),
+        }
+
+    def to_dict(self) -> Dict[str, any]:
+        """Converts Pipeline object into dict
+
+        Returns:
+            A dictionary for the Pipeline object
+        """
+        return {
+            "Name": self.name,
+            "Parameters": repr(self.parameters),
+            "Steps": repr(self.steps),
+            "PipelineExperimentConfig": repr(self.pipeline_experiment_config),
         }
 
     def create(
@@ -740,6 +760,7 @@ class ImmutablePipeline(Pipeline):
 
 @attr.s
 class _PipelineList:
+    # TODO: create Parent class _ListBase which _PipelineList can extract from
     """PipelineList class to encapsulate a list of Pipeline objects
 
     Attributes:
@@ -751,6 +772,26 @@ class _PipelineList:
     pipelines: Sequence[Pipeline] = attr.ib(factory=list)
     next_token: str = attr.ib(default=None)
 
+    def display_table(self):
+        # TODO: add unit test to verify the correct Pandas table is returned for _PipelineList
+        """Displays the list of Pipeline objects as a Table
+
+        Returns:
+            A table visual of the list of Pipeline objects
+        """
+        input_list = self.pipelines
+        next_token = self.next_token
+
+        pd.set_option("display.max_colwidth", None)
+        df = pd.DataFrame.from_records([each.to_dict() for each in input_list])
+        if next_token is not None:
+            df["NextToken"] = ""
+            df1 = pd.DataFrame([[""] * len(df.columns)], columns=df.columns)
+            df = df.append(df1, ignore_index=True)
+            df.loc[df.index[-1], "NextToken"] = next_token
+
+        return df
+        
 
 @attr.s
 class _PipelineExecution:
@@ -767,6 +808,15 @@ class _PipelineExecution:
     arn: str = attr.ib()
     sagemaker_session: Session = attr.ib(factory=Session)
     pipeline: Pipeline = attr.ib(default=None)
+
+    def to_dict(self):
+        """Converts _PipelineExecution object into dict
+
+        Returns:
+            A dictionary for _PipelineExecution object
+        """
+        pipelineName = self.pipeline.name if self.pipeline is not None else None
+        return {"ExecutionArn": self.arn, "Pipeline": pipelineName}
 
     def stop(self):
         """Stops a pipeline execution."""
@@ -808,7 +858,11 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
             adjacencyList = pipelineGraph.adjacency_list_with_edge_labels
 
         step_statuses = {}
-        execution_steps = self.list_steps()
+        list_response = self.sagemaker_session.sagemaker_client.list_pipeline_execution_steps(
+            PipelineExecutionArn=self.arn
+        )
+        execution_steps = list_response["PipelineExecutionSteps"]
+
         edges = generate_display_edges(adjacencyList)
         for step in execution_steps:
             step_statuses[step[_STEP_NAME]] = step["StepStatus"]
@@ -821,18 +875,21 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
         )
 
     def list_steps(self):
+        # TODO: add a _StepList class which extends the _ListBase class & includes .display_table() method
         """Describes a pipeline execution's steps.
 
         Returns:
-             Information about the steps of the pipeline execution. See
+             Information about the steps of the pipeline execution in a table. See
              `boto3 client list_pipeline_execution_steps
              <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/\
 sagemaker.html#SageMaker.Client.list_pipeline_execution_steps>`_.
         """
+
         response = self.sagemaker_session.sagemaker_client.list_pipeline_execution_steps(
             PipelineExecutionArn=self.arn
         )
-        return response["PipelineExecutionSteps"]
+
+        return generate_table_from_list_of_dict(response["PipelineExecutionSteps"], STEP_COLORS)
 
     def wait(self, delay=30, max_attempts=60):
         """Waits for a pipeline execution.
@@ -878,6 +935,7 @@ sagemaker.html#SageMaker.Client.list_pipeline_execution_steps>`_.
 
 @attr.s
 class _ExecutionList:
+    # TODO: Create Parent class _ListBase which _ExecutionList can extract from
     """ExecutionList class to encapsulate a list of _PipelineExecution objects
 
     Attributes:
@@ -888,6 +946,26 @@ class _ExecutionList:
 
     pipeline_executions: Sequence[_PipelineExecution] = attr.ib(factory=list)
     next_token: str = attr.ib(default=None)
+
+    def display_table(self):
+        # TODO: Add unit test to verify the correct Pandas table is created from the _ExecutionList object
+        """Displays the list of _PipelineExecution objects as a Table
+
+        Returns:
+            A table visual of the list of _PipelineExecution objects
+        """
+        input_list = self.pipeline_executions
+        next_token = self.next_token
+
+        pd.set_option("display.max_colwidth", None)
+        df = pd.DataFrame.from_records([each.to_dict() for each in input_list])
+        if next_token is not None:
+            df["NextToken"] = ""
+            df1 = pd.DataFrame([[""] * len(df.columns)], columns=df.columns)
+            df = df.append(df1, ignore_index=True)
+            df.loc[df.index[-1], "NextToken"] = next_token
+
+        return df
 
 
 class PipelineGraph:

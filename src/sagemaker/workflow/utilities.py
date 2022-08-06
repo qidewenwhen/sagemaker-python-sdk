@@ -239,6 +239,7 @@ def generate_display_edges(adjacency_list: List[Dict[str, any]]) -> Set:
 
 
 def generate_table_from_list_of_dict(input_list: List[Dict[str, any]], STEP_COLORS):
+    # TODO: add unit test for this method to verify the correct Pandas table is returned from a list of dicts
     """Generates a table view of a list of dictionaries
 
     Args:

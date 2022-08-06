@@ -237,8 +237,7 @@ class Pipeline(Entity):
             "Name": self.name,
             "Parameters": repr(self.parameters),
             "Steps": repr(self.steps),
-            "Pipeline Experiment Config": repr(self.pipeline_experiment_config),
-            "Sagemaker Session": self.sagemaker_session,
+            "PipelineExperimentConfig": repr(self.pipeline_experiment_config),
         }
 
     def create(
@@ -761,6 +760,7 @@ class ImmutablePipeline(Pipeline):
 
 @attr.s
 class _PipelineList:
+    # TODO: create Parent class _ListBase which _PipelineList can extract from
     """PipelineList class to encapsulate a list of Pipeline objects
 
     Attributes:
@@ -772,8 +772,8 @@ class _PipelineList:
     pipelines: Sequence[Pipeline] = attr.ib(factory=list)
     next_token: str = attr.ib(default=None)
 
-
-    def table(self):
+    def display_table(self):
+        # TODO: add unit test to verify the correct Pandas table is returned for _PipelineList
         """Displays the list of Pipeline objects as a Table
 
         Returns:
@@ -816,11 +816,7 @@ class _PipelineExecution:
             A dictionary for _PipelineExecution object
         """
         pipelineName = self.pipeline.name if self.pipeline is not None else None
-        return {
-            "ExecutionArn": self.arn,
-            "Sagemaker Session": self.sagemaker_session,
-            "Pipeline": pipelineName,
-        }
+        return {"ExecutionArn": self.arn, "Pipeline": pipelineName}
 
     def stop(self):
         """Stops a pipeline execution."""
@@ -879,6 +875,7 @@ sagemaker.html#SageMaker.Client.describe_pipeline_execution>`_.
         )
 
     def list_steps(self):
+        # TODO: add a _StepList class which extends the _ListBase class & includes .display_table() method
         """Describes a pipeline execution's steps.
 
         Returns:
@@ -938,6 +935,7 @@ sagemaker.html#SageMaker.Client.list_pipeline_execution_steps>`_.
 
 @attr.s
 class _ExecutionList:
+    # TODO: Create Parent class _ListBase which _ExecutionList can extract from
     """ExecutionList class to encapsulate a list of _PipelineExecution objects
 
     Attributes:
@@ -949,7 +947,8 @@ class _ExecutionList:
     pipeline_executions: Sequence[_PipelineExecution] = attr.ib(factory=list)
     next_token: str = attr.ib(default=None)
 
-    def table(self):
+    def display_table(self):
+        # TODO: Add unit test to verify the correct Pandas table is created from the _ExecutionList object
         """Displays the list of _PipelineExecution objects as a Table
 
         Returns:
